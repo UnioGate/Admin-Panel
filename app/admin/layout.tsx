@@ -1,6 +1,7 @@
 import AuthGuard from '@/components/AuthGuard';
 import Sidebar from '@/components/Sidebar';
 import Toast from '@/components/Toast';
+import { listAdmins } from '@/lib/admins';
 import { requireAdmin } from '@/lib/auth';
 import { unreadEmailCount } from '@/lib/email-queries';
 import { fetchMessages } from '@/lib/queries';
@@ -24,14 +25,32 @@ async function unreadEmail() {
   }
 }
 
+// Whether the table exists is worth knowing even for a request we are about to
+// turn away: "run the migration" and "you are not on the list" need different
+// messages, and only one of them is the user's fault.
+async function allowlist() {
+  try {
+    return await listAdmins();
+  } catch {
+    return { admins: [], provisioned: true };
+  }
+}
+
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   // AuthGuard is the client-side experience; this is the server-side gate, so
   // no admin data is fetched or rendered for a request that is not allowlisted.
   const session = await requireAdmin();
+  const { admins, provisioned } = await allowlist();
   const [unread, emails] = session ? await Promise.all([unreadCount(), unreadEmail()]) : [0, 0];
 
   return (
-    <AdminProvider>
+    <AdminProvider
+      session={session && { email: session.email, name: session.name, role: session.role }}
+      // The list itself only goes to the browser for someone already through
+      // the gate. A rejected request gets the empty array.
+      admins={session ? admins : []}
+      adminsProvisioned={provisioned}
+    >
       <AuthGuard>
         <div style={{ display: 'grid', gridTemplateColumns: '248px 1fr', minHeight: '100vh', background: '#E9ECF3' }}>
           <Sidebar unread={unread} unreadEmail={emails} />

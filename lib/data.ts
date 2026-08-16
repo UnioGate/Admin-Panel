@@ -54,6 +54,15 @@ export type Message = {
   notes: string | null;
 };
 
-export type Admin = { name: string; email: string; role: 'Owner' | 'Admin' | 'Support' };
+// `admins.role` is constrained in the database, same as message statuses.
+// Owner is the only role that may change the allowlist itself.
+export const ADMIN_ROLES = ['Owner', 'Admin', 'Support'] as const;
+export type AdminRole = (typeof ADMIN_ROLES)[number];
+
+export function isAdminRole(value: unknown): value is AdminRole {
+  return ADMIN_ROLES.includes(value as AdminRole);
+}
+
+export type Admin = { name: string; email: string; role: AdminRole };
 
 export type ActivityEntry = { text: string; when: string; kind: string };

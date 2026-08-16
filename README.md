@@ -6,12 +6,15 @@ allowlisted emails/wallets can open it.
 ## Run
 
     npm install
-    cp .env.example .env.local   # Privy app id/secret + the admin allowlist
+    cp .env.example .env.local   # Privy, Supabase, Resend
+    # run sql/admins.sql in the Supabase SQL editor
     npm run dev
 
-Nobody can open the console until you are on the allowlist. Set `ADMIN_ALLOWLIST` and
-`NEXT_PUBLIC_ADMIN_ALLOWLIST` to the same value and restart — env changes are not
-hot-reloaded. An unset allowlist admits nobody rather than falling back to a default.
+Nobody can open the console until they are in the `admins` table. That table *is* the
+allowlist — there is no environment variable and no fallback, so a missing or empty table
+admits nobody. `sql/admins.sql` seeds the first Owner; without that seed there would be no
+way in to add anyone. After that, admins are managed from Settings and take effect on the
+next request.
 
 ## Structure
 
@@ -27,8 +30,8 @@ hot-reloaded. An unset allowlist admits nobody rather than falling back to a def
     app/api/*                   Route handlers (invites is still a stub)
     app/api/email/inbound/      Resend webhook — the only route not behind requireAdmin()
     components/*                Client halves of the pages above (tables, inbox, drawer, chart)
-    lib/allowlist.ts            Parses the admin allowlist — the one source for who is an admin
-    lib/auth.ts                 requireAdmin(): verifies the Privy token, checks the allowlist
+    lib/admins.ts               The allowlist table — the one source for who is an admin
+    lib/auth.ts                 requireAdmin(): verifies the Privy token, looks up the admin
     lib/supabase.ts             Service-role client — server-only, throws if imported client-side
     lib/queries.ts              Every read and write against Supabase
     lib/resend.ts               Resend client + the list of addresses we may send as
@@ -38,6 +41,7 @@ hot-reloaded. An unset allowlist admits nobody rather than falling back to a def
     lib/format.ts               Date/subject helpers — run server-side so hydration matches
     lib/store.tsx               Client state: session notes, admins, toasts
     lib/theme.ts                Design tokens shared with the marketing site
+    sql/admins.sql              Migration for the allowlist — run this first, it seeds the Owner
     sql/emails.sql              Migration for the mail store — run by hand, see Email
     proxy.ts                    Cookie gate on /admin (was middleware.ts before Next 16)
 
@@ -47,9 +51,10 @@ child. Writes go through the route handlers, which re-check `requireAdmin()`, th
 
 ## Data
 
-Four tables in Supabase, read with the service role key (RLS is bypassed, so the key is
+Five tables in Supabase, read with the service role key (RLS is bypassed, so the key is
 server-only and every caller sits behind `requireAdmin()`):
 
+    admins            id, email, name, role, created_at, added_by
     waitlist          id, email, created_at, unsubscribed, hidden_at
     contact_messages  id, created_at, name, email, message, topic, business, volume,
                       status, handled_at, notes
@@ -64,6 +69,28 @@ in `lib/data.ts` mirrors it — change one and you must change the other, or wri
 Deleting an enquiry is Owner only and permanent — there is no soft delete for
 `contact_messages` as there is for waitlist rows. The role comes from the server-only
 allowlist, so `app/api/messages/route.ts` enforces it; hiding the button is only a courtesy.
+
+## Access
+
+`admins` is the allowlist. `requireAdmin()` verifies the Privy cookie, looks the email up in
+that table, and returns the row's role — one indexed read per request, which is what buys you
+an allowlist editable at runtime instead of one baked into a deploy.
+
+Nothing about access is decided in the browser. The layout resolves the session server-side
+and hands it down; `AuthGuard` and the Sidebar render from that rather than re-deriving a
+verdict from a client-side copy of the list. The list only reaches the browser for someone
+already through the gate, and `NEXT_PUBLIC_ADMIN_ALLOWLIST` is gone — nothing about who is an
+admin ships in the bundle.
+
+The login page no longer pre-checks the address. It is public and pre-auth, so checking would
+mean either shipping the list or exposing an "is this person an admin?" endpoint — an
+enumeration oracle either way. Anyone can request a code; only an allowlisted address gets
+past `requireAdmin()` afterwards.
+
+Only an Owner can change the list, enforced in `app/api/admins/route.ts` rather than by hiding
+buttons, and every add, role change and removal is written to `admin_activity`. Two things are
+refused outright: removing your own access, and removing or demoting the last Owner — either
+would leave a console nobody can administer, recoverable only by editing the table by hand.
 
 `waitlist` has no rank column — position is signup order, computed from `created_at`. The
 console only shows what these columns hold; source, wallet and referral data would have to be
@@ -120,9 +147,7 @@ Deleting a conversation is Owner only and permanent, same as enquiries.
 ## Wiring checklist
 
 1. ~~Replace the mocks with Supabase queries.~~ Done.
-2. Move the allowlist from the environment into a table. Both readers already go through
-   `lib/allowlist.ts`, so swap its source and the guard, `requireAdmin()` and the Settings
-   page follow. Adding an admin in Settings is session-only until this lands.
+2. ~~Move the allowlist from the environment into a table.~~ Done — see Access.
 3. `app/api/invites/route.ts` — send through your transactional provider and record events.
 4. Hiding a record is a soft delete — the console sets `hidden_at` and excludes the row from
    stats and exports, but nothing purges it. Add a scheduled job to anonymise after 30 days.

@@ -21,12 +21,13 @@ const NAV = [
 export default function Sidebar({ unread, unreadEmail }: { unread: number; unreadEmail: number }) {
   const pathname = usePathname();
   const { user, logout } = usePrivy();
-  const { admins } = useAdmin();
+  // Name and role come from the session the server resolved, not from a lookup
+  // in a client-side copy of the list — there is no client-side copy any more.
+  const { session } = useAdmin();
   const router = useRouter();
   const [confirm, setConfirm] = useState(false);
 
-  const email = user?.email?.address ?? '';
-  const me = admins.find(a => a.email.toLowerCase() === email.toLowerCase());
+  const email = session?.email ?? user?.email?.address ?? '';
 
   return (
     <aside style={{ background: c.ink, color: c.white, display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh' }}>
@@ -64,9 +65,9 @@ export default function Sidebar({ unread, unreadEmail }: { unread: number; unrea
 
       <div style={{ padding: '20px 24px', borderTop: '0.7px solid #2A3350' }}>
         <div style={{ fontSize: 12, color: c.sidebarMuted }}>Signed in with Privy</div>
-        <div style={{ fontSize: 15, marginTop: 4, fontWeight: 500 }}>{me?.name ?? email.split('@')[0] ?? 'Admin'}</div>
+        <div style={{ fontSize: 15, marginTop: 4, fontWeight: 500 }}>{session?.name || email.split('@')[0] || 'Admin'}</div>
         <div style={{ fontSize: 12, color: c.sidebarMuted, marginTop: 2, overflowWrap: 'anywhere' }}>
-          {email} · {me?.role ?? 'Admin'}
+          {email}{session ? ' · ' + session.role : ''}
         </div>
         <button
           type="button"

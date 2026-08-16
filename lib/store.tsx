@@ -2,17 +2,26 @@
 
 import { useRouter } from 'next/navigation';
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { ADMIN_ALLOWLIST } from './allowlist';
-import type { Admin } from './data';
+import type { Admin, AdminRole } from './data';
+
+// What the server already knows about this request. Passed down from
+// app/admin/layout.tsx rather than re-derived here: the client cannot be
+// trusted to decide who is an admin, and asking it to would mean shipping the
+// allowlist to the browser.
+export type ClientSession = { email: string; name: string; role: AdminRole } | null;
 
 type Ctx = {
   hide: (emails: string[]) => Promise<void>;
   restore: (email: string) => Promise<void>;
   notes: Record<string, string>;
   saveNote: (email: string, note: string) => void;
+  session: ClientSession;
   admins: Admin[];
-  addAdmin: (name: string, email: string) => void;
-  renameAdmin: (index: number, name: string) => void;
+  adminsProvisioned: boolean;
+  addAdmin: (name: string, email: string, role: AdminRole) => Promise<void>;
+  renameAdmin: (email: string, name: string) => Promise<void>;
+  setAdminRole: (email: string, role: AdminRole) => Promise<void>;
+  removeAdmin: (email: string) => Promise<void>;
   note: (action: string, kind: string, target?: string) => void;
   toast: string;
   flash: (msg: string) => void;
@@ -20,10 +29,19 @@ type Ctx = {
 
 const AdminCtx = createContext<Ctx | null>(null);
 
-export function AdminProvider({ children }: { children: React.ReactNode }) {
+export function AdminProvider({
+  children,
+  session,
+  admins,
+  adminsProvisioned
+}: {
+  children: React.ReactNode;
+  session: ClientSession;
+  admins: Admin[];
+  adminsProvisioned: boolean;
+}) {
   const router = useRouter();
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const [admins, setAdmins] = useState<Admin[]>(ADMIN_ALLOWLIST);
   const [toast, setToast] = useState('');
 
   const flash = useCallback((msg: string) => {
@@ -74,26 +92,46 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     flash('Note kept for this session only — the waitlist table has no notes column.');
   }, [flash]);
 
-  // TODO: persist to the allowlist table once it exists. Until then this is
-  // session-only — the server check in lib/auth.ts reads ADMIN_ALLOWLIST, so a
-  // name added here cannot actually sign in.
-  const addAdmin = useCallback((name: string, email: string) => {
-    const normalised = email.trim().toLowerCase();
-    const display = name.trim() || normalised.split('@')[0];
-    setAdmins(a => (
-      a.some(x => x.email === normalised) ? a : [...a, { name: display, email: normalised, role: 'Admin' }]
-    ));
-    note('Staged admin for the allowlist', 'Access', normalised);
-    flash('Staged for this session. Add ' + normalised + ' to ADMIN_ALLOWLIST to make it stick.');
-  }, [flash, note]);
+  // All four allowlist writes go through /api/admins, which re-checks the
+  // session and refuses anyone who is not an Owner. Nothing is applied
+  // optimistically: being wrong about who has access is worse than a redraw.
+  const writeAdmins = useCallback(async (method: 'POST' | 'PATCH' | 'DELETE', body: unknown, ok: string) => {
+    const res = await fetch('/api/admins', {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const { error } = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
+      flash(error ?? 'Could not update the allowlist.');
+      return;
+    }
+    router.refresh();
+    flash(ok);
+  }, [flash, router]);
 
-  const renameAdmin = useCallback((index: number, name: string) => {
-    setAdmins(a => a.map((x, i) => (i === index ? { ...x, name } : x)));
-  }, []);
+  const addAdmin = useCallback(async (name: string, email: string, role: AdminRole) => {
+    const normalised = email.trim().toLowerCase();
+    await writeAdmins('POST', { email: normalised, name, role }, normalised + ' can now sign in as ' + role + '.');
+  }, [writeAdmins]);
+
+  const renameAdmin = useCallback(async (email: string, name: string) => {
+    await writeAdmins('PATCH', { email, name }, 'Display name updated.');
+  }, [writeAdmins]);
+
+  const setAdminRole = useCallback(async (email: string, role: AdminRole) => {
+    await writeAdmins('PATCH', { email, role }, email + ' is now ' + role + '.');
+  }, [writeAdmins]);
+
+  const removeAdmin = useCallback(async (email: string) => {
+    await writeAdmins('DELETE', { email }, email + ' can no longer open the console.');
+  }, [writeAdmins]);
 
   const value = useMemo<Ctx>(() => ({
-    hide, restore, notes, saveNote, admins, addAdmin, renameAdmin, note, toast, flash
-  }), [hide, restore, notes, saveNote, admins, addAdmin, renameAdmin, note, toast, flash]);
+    hide, restore, notes, saveNote, session, admins, adminsProvisioned,
+    addAdmin, renameAdmin, setAdminRole, removeAdmin, note, toast, flash
+  }), [hide, restore, notes, saveNote, session, admins, adminsProvisioned,
+    addAdmin, renameAdmin, setAdminRole, removeAdmin, note, toast, flash]);
 
   return <AdminCtx.Provider value={value}>{children}</AdminCtx.Provider>;
 }

@@ -4,7 +4,6 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useLoginWithEmail, useLoginWithSiwe, usePrivy } from '@privy-io/react-auth';
-import { ADMIN_ALLOWLIST, isAllowed } from '@/lib/allowlist';
 import { btnPrimary, c, display, input as inputStyle, pill } from '@/lib/theme';
 
 // Minimal EIP-1193 surface — enough to request accounts and personal_sign.
@@ -55,17 +54,11 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     const address = email.trim().toLowerCase();
-    // Convenience, not the security boundary: the allowlist already ships in
-    // this bundle, and lib/auth.ts re-checks it server-side on every request.
-    // Failing here just saves sending an OTP that could never open the console.
-    if (!isAllowed(address, ADMIN_ALLOWLIST)) {
-      setError(
-        ADMIN_ALLOWLIST.length === 0
-          ? 'No admin allowlist is configured. Set NEXT_PUBLIC_ADMIN_ALLOWLIST and ADMIN_ALLOWLIST, then restart the dev server.'
-          : address + ' is not on the admin allowlist. Ask the Owner to add it.'
-      );
-      return;
-    }
+    // No allowlist check here any more. This page is public and pre-auth, so
+    // checking would mean either shipping the list of admins to the browser or
+    // exposing an endpoint that answers "is this person an admin?" — an
+    // enumeration oracle either way. Anyone may request a code; only an
+    // allowlisted address gets past AuthGuard and requireAdmin() afterwards.
     try {
       await sendCode({ email: address });
       setEmail(address);
