@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import type { Admin, AdminRole } from './data';
+import type { Admin, AdminRole, Mailbox } from './data';
 
 // What the server already knows about this request. Passed down from
 // app/admin/layout.tsx rather than re-derived here: the client cannot be
@@ -21,7 +21,14 @@ type Ctx = {
   addAdmin: (name: string, email: string, role: AdminRole) => Promise<void>;
   renameAdmin: (email: string, name: string) => Promise<void>;
   setAdminRole: (email: string, role: AdminRole) => Promise<void>;
+  suspendAdmin: (email: string, suspended: boolean) => Promise<void>;
   removeAdmin: (email: string) => Promise<void>;
+  mailboxes: Mailbox[];
+  mailboxesProvisioned: boolean;
+  addMailbox: (address: string, label: string, assignedTo: string | null) => Promise<void>;
+  assignMailbox: (address: string, assignedTo: string | null) => Promise<void>;
+  suspendMailbox: (address: string, suspended: boolean) => Promise<void>;
+  removeMailbox: (address: string) => Promise<void>;
   note: (action: string, kind: string, target?: string) => void;
   toast: string;
   flash: (msg: string) => void;
@@ -33,12 +40,16 @@ export function AdminProvider({
   children,
   session,
   admins,
-  adminsProvisioned
+  adminsProvisioned,
+  mailboxes,
+  mailboxesProvisioned
 }: {
   children: React.ReactNode;
   session: ClientSession;
   admins: Admin[];
   adminsProvisioned: boolean;
+  mailboxes: Mailbox[];
+  mailboxesProvisioned: boolean;
 }) {
   const router = useRouter();
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -123,15 +134,74 @@ export function AdminProvider({
     await writeAdmins('PATCH', { email, role }, email + ' is now ' + role + '.');
   }, [writeAdmins]);
 
+  const suspendAdmin = useCallback(async (email: string, suspended: boolean) => {
+    await writeAdmins(
+      'PATCH',
+      { email, suspended },
+      suspended ? email + ' is suspended and can no longer sign in.' : email + ' can sign in again.'
+    );
+  }, [writeAdmins]);
+
   const removeAdmin = useCallback(async (email: string) => {
     await writeAdmins('DELETE', { email }, email + ' can no longer open the console.');
   }, [writeAdmins]);
 
+  // Mailbox writes mirror the allowlist ones: /api/mailboxes re-checks the
+  // session and refuses anyone who is not an Owner, and nothing is applied
+  // optimistically — being wrong about who can send as a company address is
+  // worse than a redraw.
+  const writeMailboxes = useCallback(async (method: 'POST' | 'PATCH' | 'DELETE', body: unknown, ok: string) => {
+    const res = await fetch('/api/mailboxes', {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const { error } = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
+      flash(error ?? 'Could not update the mailbox.');
+      return;
+    }
+    router.refresh();
+    flash(ok);
+  }, [flash, router]);
+
+  const addMailbox = useCallback(async (address: string, label: string, assignedTo: string | null) => {
+    await writeMailboxes(
+      'POST',
+      { address, label, assignedTo },
+      assignedTo ? 'Mailbox created for ' + assignedTo + '.' : 'Shared mailbox created.'
+    );
+  }, [writeMailboxes]);
+
+  const assignMailbox = useCallback(async (address: string, assignedTo: string | null) => {
+    await writeMailboxes(
+      'PATCH',
+      { address, assignedTo },
+      assignedTo ? address + ' now belongs to ' + assignedTo + '.' : address + ' is now shared.'
+    );
+  }, [writeMailboxes]);
+
+  const suspendMailbox = useCallback(async (address: string, suspended: boolean) => {
+    await writeMailboxes(
+      'PATCH',
+      { address, suspended },
+      suspended ? address + ' is suspended — it still receives, but cannot send.' : address + ' can send again.'
+    );
+  }, [writeMailboxes]);
+
+  const removeMailbox = useCallback(async (address: string) => {
+    await writeMailboxes('DELETE', { address }, address + ' deleted. Its old mail is still in the console.');
+  }, [writeMailboxes]);
+
   const value = useMemo<Ctx>(() => ({
     hide, restore, notes, saveNote, session, admins, adminsProvisioned,
-    addAdmin, renameAdmin, setAdminRole, removeAdmin, note, toast, flash
+    addAdmin, renameAdmin, setAdminRole, suspendAdmin, removeAdmin,
+    mailboxes, mailboxesProvisioned, addMailbox, assignMailbox, suspendMailbox, removeMailbox,
+    note, toast, flash
   }), [hide, restore, notes, saveNote, session, admins, adminsProvisioned,
-    addAdmin, renameAdmin, setAdminRole, removeAdmin, note, toast, flash]);
+    addAdmin, renameAdmin, setAdminRole, suspendAdmin, removeAdmin,
+    mailboxes, mailboxesProvisioned, addMailbox, assignMailbox, suspendMailbox, removeMailbox,
+    note, toast, flash]);
 
   return <AdminCtx.Provider value={value}>{children}</AdminCtx.Provider>;
 }

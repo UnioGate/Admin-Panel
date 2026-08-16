@@ -14,10 +14,14 @@ import { btnPrimary, btnSecondary, c, card, display, input, pill } from '@/lib/t
 type Draft = { from: string; to: string; cc: string; subject: string; text: string };
 
 export default function EmailConsole({
-  threads, mailboxes, provisioned, configured, canDelete
+  threads, mailboxes, readableMailboxes, mailboxesProvisioned, provisioned, configured, canDelete
 }: {
   threads: EmailThread[];
+  /** Addresses this admin may send as: theirs and the shared ones, minus any suspended. */
   mailboxes: string[];
+  /** Those plus the suspended ones, whose old mail is still worth reading. */
+  readableMailboxes: string[];
+  mailboxesProvisioned: boolean;
   provisioned: boolean;
   configured: boolean;
   canDelete: boolean;
@@ -58,6 +62,12 @@ export default function EmailConsole({
   const unread = threads.reduce((n, t) => n + t.unread, 0);
   const awaiting = inMailbox.filter(t => t.hasOutbound && t.awaitingReply).length;
 
+  // Reply from the address the conversation came to. If that address is
+  // suspended, or is not one of yours, there is no honest `from` to use — the
+  // server would refuse anyway, so say why here instead of failing on send.
+  const replyFrom = open?.mailbox && mailboxes.includes(open.mailbox) ? open.mailbox : null;
+  const canSend = mailboxes.length > 0;
+
   async function post(url: string, method: string, body: unknown): Promise<boolean> {
     setBusy(true);
     const res = await fetch(url, {
@@ -91,10 +101,10 @@ export default function EmailConsole({
   }
 
   async function sendReply() {
-    if (!open) return;
+    if (!open || !replyFrom) return;
     const last = open.messages[open.messages.length - 1];
     const ok = await post('/api/email/send', 'POST', {
-      from: open.mailbox ?? mailboxes[0],
+      from: replyFrom,
       to: open.correspondents,
       subject: replySubject(open.subject),
       text: reply,
@@ -124,22 +134,32 @@ export default function EmailConsole({
     }
   }
 
-  if (!configured || !provisioned) {
+  if (!configured || !provisioned || !mailboxesProvisioned) {
     return (
       <>
         <PageHeader title="Email" subtitle="Not set up yet" />
         <div className="page-pad">
           <div style={{ ...card, maxWidth: 640, fontSize: 15, lineHeight: 1.7, fontWeight: 300, color: c.muted }}>
             <h2 style={{ margin: '0 0 12px', fontFamily: display, fontSize: 22, fontWeight: 500, color: c.ink }}>
-              {configured ? 'The emails table does not exist yet' : 'Resend is not configured'}
+              {!configured
+                ? 'Resend is not configured'
+                : !provisioned
+                  ? 'The emails table does not exist yet'
+                  : 'The mailboxes table does not exist yet'}
             </h2>
-            {configured ? (
-              <p style={{ margin: 0 }}>Run the <code>emails</code> migration from the README, then reload.</p>
-            ) : (
+            {!configured ? (
               <p style={{ margin: 0 }}>
                 Set <code>RESEND_API_KEY</code> and <code>RESEND_WEBHOOK_SECRET</code> in
                 <code> .env.local</code> and restart the dev server. The README has the DNS and
                 webhook steps that go with them.
+              </p>
+            ) : !provisioned ? (
+              <p style={{ margin: 0 }}>Run <code>sql/emails.sql</code> in the Supabase SQL editor, then reload.</p>
+            ) : (
+              <p style={{ margin: 0 }}>
+                Run <code>sql/mailboxes.sql</code> in the Supabase SQL editor, then reload. It holds the
+                addresses this console can send and receive as — they used to live
+                in <code>EMAIL_MAILBOXES</code>.
               </p>
             )}
           </div>
@@ -188,17 +208,19 @@ export default function EmailConsole({
 
         <button
           type="button"
+          disabled={!canSend}
           onClick={() => setComposing(true)}
-          style={{ ...btnPrimary, marginLeft: 'auto', padding: '11px 22px', fontSize: 15 }}
+          title={canSend ? undefined : 'You have no mailbox that can send. An Owner assigns one in Settings.'}
+          style={{ ...btnPrimary, marginLeft: 'auto', padding: '11px 22px', fontSize: 15, opacity: canSend ? 1 : 0.5 }}
         >
           New message
         </button>
       </div>
 
       {/* One mailbox means the pills would be a row of one — not worth the space. */}
-      {mailboxes.length > 1 ? (
+      {readableMailboxes.length > 1 ? (
         <div className="filter-bar scroll-x" style={{ flexWrap: 'nowrap', paddingTop: 12 }}>
-          {['All', ...mailboxes].map(m => (
+          {['All', ...readableMailboxes].map(m => (
             <button
               key={m}
               type="button"
@@ -306,21 +328,27 @@ export default function EmailConsole({
 
             <div style={{ marginTop: 'auto', padding: '20px 28px 28px', borderTop: '0.5px solid ' + c.line }}>
               <div style={{ fontSize: 13, color: c.soft, marginBottom: 8 }}>
-                Replying as {open.mailbox ?? mailboxes[0]} to {open.correspondents.join(', ') || '—'}
+                {/* No silent substitution. Replying from a different address
+                    than the one they wrote to would look like a stranger
+                    barging into the conversation. */}
+                {replyFrom
+                  ? 'Replying as ' + replyFrom + ' to ' + (open.correspondents.join(', ') || '—')
+                  : (open.mailbox ?? 'This mailbox') + ' cannot send — it is suspended, or it is not one of yours.'}
               </div>
               <textarea
                 rows={5}
                 value={reply}
+                disabled={!replyFrom}
                 onChange={e => setReply(e.target.value)}
-                placeholder="Write a reply…"
-                style={{ ...input, width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+                placeholder={replyFrom ? 'Write a reply…' : 'Replies are disabled for this mailbox.'}
+                style={{ ...input, width: '100%', resize: 'vertical', fontFamily: 'inherit', opacity: replyFrom ? 1 : 0.6 }}
               />
               <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center' }}>
                 <button
                   type="button"
-                  disabled={busy || !reply.trim() || open.correspondents.length === 0}
+                  disabled={busy || !replyFrom || !reply.trim() || open.correspondents.length === 0}
                   onClick={() => void sendReply()}
-                  style={{ ...btnPrimary, padding: '11px 24px', fontSize: 15, opacity: busy || !reply.trim() ? 0.5 : 1 }}
+                  style={{ ...btnPrimary, padding: '11px 24px', fontSize: 15, opacity: busy || !replyFrom || !reply.trim() ? 0.5 : 1 }}
                 >
                   {busy ? 'Sending…' : 'Send reply'}
                 </button>

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { addAdmin, findAdmin, listAdmins, ownerCount, removeAdmin, updateAdmin } from '@/lib/admins';
 import { requireAdmin } from '@/lib/auth';
 import { ADMIN_ROLES, isAdminRole, type AdminRole } from '@/lib/data';
+import { orphanMailboxesOf } from '@/lib/mailboxes';
 import { recordActivity } from '@/lib/queries';
 
 // Who can open the console is the most sensitive thing in here: an admin who
@@ -63,7 +64,12 @@ export async function PATCH(req: Request) {
   const gate = await requireOwner();
   if (gate.error) return gate.error;
 
-  const { email, name, role } = (await req.json()) as { email?: string; name?: string; role?: unknown };
+  const { email, name, role, suspended } = (await req.json()) as {
+    email?: string;
+    name?: string;
+    role?: unknown;
+    suspended?: unknown;
+  };
   const address = (email ?? '').trim().toLowerCase();
   if (!address) return NextResponse.json({ error: 'email required' }, { status: 400 });
 
@@ -75,30 +81,42 @@ export async function PATCH(req: Request) {
     nextRole = role;
   }
 
+  if (suspended !== undefined && typeof suspended !== 'boolean') {
+    return NextResponse.json({ error: 'suspended must be true or false.' }, { status: 400 });
+  }
+
+  // Suspending yourself locks you out of the console that undoes it, so it is
+  // refused rather than left as a trap — same reasoning as removing yourself.
+  if (suspended === true && address === gate.session.email) {
+    return NextResponse.json({ error: 'You cannot suspend your own access.' }, { status: 409 });
+  }
+
   const target = await findAdmin(address);
   if (!target) return NextResponse.json({ error: address + ' is not on the allowlist.' }, { status: 404 });
 
-  // Demoting the last Owner leaves a console nobody can administer, and the
-  // only way back is editing the table by hand in Supabase.
-  if (nextRole && nextRole !== 'Owner' && target.role === 'Owner' && (await ownerCount()) <= 1) {
+  // Demoting or suspending the last Owner leaves a console nobody can
+  // administer, and the only way back is editing the table by hand in Supabase.
+  const losesOwner = (nextRole && nextRole !== 'Owner') || suspended === true;
+  if (losesOwner && target.role === 'Owner' && !target.suspendedAt && (await ownerCount()) <= 1) {
     return NextResponse.json({ error: 'This is the last Owner. Promote someone else first.' }, { status: 409 });
   }
 
   try {
-    await updateAdmin(address, { name, role: nextRole });
+    await updateAdmin(address, { name, role: nextRole, suspended: suspended as boolean | undefined });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 502 });
   }
 
-  // A rename is cosmetic; a role change is not. Only log the one that matters,
-  // or the activity feed becomes noise nobody reads.
-  const logged = nextRole && nextRole !== target.role
-    ? await recordActivity({
-        actor: gate.session.email,
-        action: 'Changed role to ' + nextRole,
-        target: address,
-        kind: 'Access'
-      })
+  // A rename is cosmetic; a role change or a suspension is not. Only log what
+  // matters, or the activity feed becomes noise nobody reads.
+  const action = suspended !== undefined
+    ? (suspended ? 'Suspended access' : 'Restored access')
+    : nextRole && nextRole !== target.role
+      ? 'Changed role to ' + nextRole
+      : null;
+
+  const logged = action
+    ? await recordActivity({ actor: gate.session.email, action, target: address, kind: 'Access' })
     : false;
 
   return NextResponse.json({ ok: true, logged });
@@ -120,7 +138,7 @@ export async function DELETE(req: Request) {
 
   const target = await findAdmin(address);
   if (!target) return NextResponse.json({ error: address + ' is not on the allowlist.' }, { status: 404 });
-  if (target.role === 'Owner' && (await ownerCount()) <= 1) {
+  if (target.role === 'Owner' && !target.suspendedAt && (await ownerCount()) <= 1) {
     return NextResponse.json({ error: 'This is the last Owner. Promote someone else first.' }, { status: 409 });
   }
 
@@ -133,11 +151,18 @@ export async function DELETE(req: Request) {
     kind: 'Access'
   });
 
+  // Their personal addresses are suspended and detached before the row goes.
+  // Deleting them would take months of conversations with them, and leaving
+  // them assigned would point at somebody who no longer exists. Not made
+  // shared either: an address that was one person's should not become
+  // everybody's the moment they leave — an Owner reassigns it deliberately.
+  const orphaned = await orphanMailboxesOf(address);
+
   try {
     await removeAdmin(address);
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 502 });
   }
 
-  return NextResponse.json({ ok: true, logged });
+  return NextResponse.json({ ok: true, logged, orphaned });
 }

@@ -3,7 +3,9 @@ import Sidebar from '@/components/Sidebar';
 import Toast from '@/components/Toast';
 import { listAdmins } from '@/lib/admins';
 import { requireAdmin } from '@/lib/auth';
+import { canUseMailbox } from '@/lib/data';
 import { unreadEmailCount } from '@/lib/email-queries';
+import { listMailboxes } from '@/lib/mailboxes';
 import { fetchMessages } from '@/lib/queries';
 import { AdminProvider } from '@/lib/store';
 
@@ -36,20 +38,37 @@ async function allowlist() {
   }
 }
 
+// Same reasoning, and the same distinction between "no table" and "no rows".
+async function domainMailboxes() {
+  try {
+    return await listMailboxes();
+  } catch {
+    return { mailboxes: [], provisioned: true };
+  }
+}
+
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   // AuthGuard is the client-side experience; this is the server-side gate, so
   // no admin data is fetched or rendered for a request that is not allowlisted.
   const session = await requireAdmin();
-  const { admins, provisioned } = await allowlist();
+  const [{ admins, provisioned }, { mailboxes, provisioned: mailboxesProvisioned }] = await Promise.all([
+    allowlist(),
+    domainMailboxes()
+  ]);
   const [unread, emails] = session ? await Promise.all([unreadCount(), unreadEmail()]) : [0, 0];
 
   return (
     <AdminProvider
       session={session && { email: session.email, name: session.name, role: session.role }}
-      // The list itself only goes to the browser for someone already through
-      // the gate. A rejected request gets the empty array.
+      // The lists only go to the browser for someone already through the gate.
+      // A rejected request gets the empty arrays.
       admins={session ? admins : []}
       adminsProvisioned={provisioned}
+      // Who owns which address is Owner business. Scoped on the server for the
+      // same reason as the email page: filtering in the browser would still
+      // have shipped the whole list.
+      mailboxes={session ? mailboxes.filter(m => canUseMailbox(m, session)) : []}
+      mailboxesProvisioned={mailboxesProvisioned}
     >
       <AuthGuard>
         {/* Grid columns and the sidebar's off-canvas behaviour live in

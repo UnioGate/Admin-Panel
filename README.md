@@ -26,15 +26,16 @@ next request.
     app/admin/email/page.tsx    Shared mailboxes — read and reply as support@, hello@, partners@
     app/admin/messages/page.tsx Contact inbox
     app/admin/activity/page.tsx Audit log
-    app/admin/settings/page.tsx Admin allowlist + Privy config
+    app/admin/settings/page.tsx Admin allowlist + mailboxes + Privy config
     app/api/*                   Route handlers (invites is still a stub)
     app/api/email/inbound/      Resend webhook — the only route not behind requireAdmin()
     components/*                Client halves of the pages above (tables, inbox, drawer, chart)
     lib/admins.ts               The allowlist table — the one source for who is an admin
+    lib/mailboxes.ts            The mailboxes table — which addresses exist and who holds them
     lib/auth.ts                 requireAdmin(): verifies the Privy token, looks up the admin
     lib/supabase.ts             Service-role client — server-only, throws if imported client-side
     lib/queries.ts              Every read and write against Supabase
-    lib/resend.ts               Resend client + the list of addresses we may send as
+    lib/resend.ts               Resend client + the verified sending domain
     lib/email.ts                Pure address/subject/threading helpers
     lib/email-queries.ts        Reads and writes against `emails`, and thread resolution
     lib/data.ts                 Shared row types
@@ -44,6 +45,7 @@ next request.
     app/globals.css             Base styles + every responsive rule — see Layout
     sql/admins.sql              Migration for the allowlist — run this first, it seeds the Owner
     sql/emails.sql              Migration for the mail store — run by hand, see Email
+    sql/mailboxes.sql           Migration for the addresses — run after admins.sql, see Mailboxes
     proxy.ts                    Cookie gate on /admin (was middleware.ts before Next 16)
 
 Pages are server components: they call `lib/queries.ts` directly and hand rows to a client
@@ -84,10 +86,11 @@ rather than making the page do it.
 
 ## Data
 
-Five tables in Supabase, read with the service role key (RLS is bypassed, so the key is
+Six tables in Supabase, read with the service role key (RLS is bypassed, so the key is
 server-only and every caller sits behind `requireAdmin()`):
 
-    admins            id, email, name, role, created_at, added_by
+    admins            id, email, name, role, suspended_at, created_at, added_by
+    mailboxes         id, address, label, assigned_to, suspended_at, created_at, created_by
     waitlist          id, email, created_at, unsubscribed, hidden_at
     contact_messages  id, created_at, name, email, message, topic, business, volume,
                       status, handled_at, notes
@@ -121,9 +124,24 @@ enumeration oracle either way. Anyone can request a code; only an allowlisted ad
 past `requireAdmin()` afterwards.
 
 Only an Owner can change the list, enforced in `app/api/admins/route.ts` rather than by hiding
-buttons, and every add, role change and removal is written to `admin_activity`. Two things are
-refused outright: removing your own access, and removing or demoting the last Owner — either
-would leave a console nobody can administer, recoverable only by editing the table by hand.
+buttons, and every add, role change, suspension and removal is written to `admin_activity`.
+
+**Suspend and remove are different things.** Suspending sets `suspended_at`; the row stays, so
+the person's name still resolves against everything they did in the activity log, but
+`requireAdmin()` returns null and they cannot sign in. Removing deletes the row. Suspension is
+checked in one place — `lib/auth.ts`, not at the door of each route — so there is a single
+place it can be got wrong.
+
+Removing someone also **suspends and detaches every mailbox that was theirs**. Deleting those
+would take months of conversations with them; leaving them assigned would point at a person who
+no longer exists; and making them shared would silently open one person's mail to every admin
+the moment they leave. An Owner reassigns them deliberately.
+
+Four things are refused outright: removing your own access, suspending your own access (you
+would lock yourself out of the console that undoes it), and removing, demoting or suspending
+the last Owner — any of which leaves a console nobody can administer, recoverable only by
+editing the table by hand. Suspended Owners do not count toward that last check: an Owner who
+cannot sign in is no use for administering anything.
 
 `waitlist` has no rank column — position is signup order, computed from `created_at`. The
 console only shows what these columns hold; source, wallet and referral data would have to be
@@ -131,9 +149,8 @@ captured by the marketing site's signup form first.
 
 ## Email
 
-`/admin/email` is a shared mailbox for the addresses on the sending domain: read what comes
-in to support@, hello@ and partners@, reply as them, or compose from scratch. Any address on
-the domain can be added — `chidile@uniogate.com` is just another entry in `EMAIL_MAILBOXES`.
+`/admin/email` reads and replies for every address on the sending domain that you hold: the
+shared ones, plus any assigned to you personally. See **Mailboxes** below for who gets what.
 
 Setup, in order. Steps 1–4 are outside this repo and only you can do them.
 
@@ -149,12 +166,52 @@ Setup, in order. Steps 1–4 are outside this repo and only you can do them.
    `_dmarc TXT "v=DMARC1; p=none; rua=mailto:support@uniogate.com"`.
 3. **Resend → Webhooks → add endpoint** `https://<deployed-host>/api/email/inbound`, event
    `email.received`. Copy the `whsec_…` signing secret.
-4. **Run `sql/emails.sql`** in the Supabase SQL editor.
-5. Fill in `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, `EMAIL_DOMAIN` and `EMAIL_MAILBOXES` in
-   `.env.local` and restart.
+4. **Run `sql/emails.sql` and `sql/mailboxes.sql`** in the Supabase SQL editor. Run
+   `sql/admins.sql` again too if you set the console up before mailboxes existed — it gained a
+   `suspended_at` column and the whole file is safe to re-run.
+5. Fill in `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET` and `EMAIL_DOMAIN` in `.env.local` and
+   restart. There is no `EMAIL_MAILBOXES` any more — delete it if you have it.
 
 The page states its own status: it says so if Resend is unconfigured or the table is missing,
 rather than failing.
+
+### Mailboxes
+
+An Owner creates addresses on the domain from Settings — no DNS change and no redeploy, because
+Resend already sends as any local part on a verified domain. `chidile@uniogate.com` is one
+click. They used to live in `EMAIL_MAILBOXES`; they now live in the `mailboxes` table, for the
+same reason the allowlist moved out of the environment.
+
+Each address is either **shared** (`assigned_to` null — every admin can read it and send as it,
+which is what `support@`, `hello@` and `partners@` are) or **assigned to one admin**, who is
+then the only person other than an Owner who can touch it. An Owner sees everything; that is
+what administering the domain means.
+
+Assignment decides three separate things, and all three are settled on the server:
+
+    /admin/email          Which addresses appear at all, and which are offered as a `From`
+    /api/email/send       Whether this session may send as the `from` it posted
+    /api/mailboxes GET    Which rows the browser is even told about
+
+The last one matters. Filtering in the browser would have shipped the full list of who holds
+which address to everyone, so the scoping happens in the route handler and in the server
+components, never in the client.
+
+**Suspending** a mailbox stops it sending and keeps everything else: it still receives, its old
+mail is still readable, and it still appears in the mailbox filter. **Deleting** removes the
+address; its conversations stay, because `emails.mailbox` is plain text rather than a reference
+to this table — a thread should survive the address it came through.
+
+Two rules on new addresses, both enforced by a check constraint as well as by the API:
+
+- It must be on `EMAIL_DOMAIN`. Resend cannot send as anything else, so an address elsewhere
+  would be created here and then fail at the point of use.
+- No `+` in the local part. Outbound mail carries the thread id as `local+t<id>@`, and a
+  literal `+` would make a real address and a routing address impossible to tell apart.
+
+Only an Owner can create, assign, suspend or delete, enforced in `app/api/mailboxes/route.ts`;
+every one of those writes lands in the activity log. A relabel does not — it is cosmetic, and
+the log is only worth reading if everything in it matters.
 
 ### Folders
 
@@ -199,6 +256,7 @@ Deleting a conversation is Owner only and permanent, same as enquiries.
 
 1. ~~Replace the mocks with Supabase queries.~~ Done.
 2. ~~Move the allowlist from the environment into a table.~~ Done — see Access.
+   ~~Same for the mailbox list.~~ Done — see Mailboxes.
 3. `app/api/invites/route.ts` — send through your transactional provider and record events.
 4. Hiding a record is a soft delete — the console sets `hidden_at` and excludes the row from
    stats and exports, but nothing purges it. Add a scheduled job to anonymise after 30 days.

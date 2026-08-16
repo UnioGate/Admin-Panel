@@ -16,19 +16,12 @@ export const webhookSecret = process.env.RESEND_WEBHOOK_SECRET ?? '';
 // stack trace at whoever opened the page.
 export const resend = new Resend(apiKey ?? 're_not_configured');
 
-export const EMAIL_DOMAIN = (process.env.EMAIL_DOMAIN ?? 'uniogate.com').toLowerCase();
-
 /**
- * Addresses the console may send as. Resend has no per-address setup — a
- * verified domain permits any local part — so this list exists to stop a typo
- * going out as a real-looking address nobody reads, not because Resend needs it.
+ * The domain Resend has verified. Every mailbox must be on it — Resend permits
+ * any local part on a verified domain and none at all anywhere else — so this
+ * is what `lib/mailboxes.ts` validates new addresses against.
+ *
+ * The addresses themselves used to live in EMAIL_MAILBOXES and now live in the
+ * `mailboxes` table, so they can be created and assigned without a redeploy.
  */
-export const MAILBOXES: string[] = (process.env.EMAIL_MAILBOXES ?? 'support,hello,partners')
-  .split(',')
-  .map(part => part.trim().toLowerCase())
-  .filter(Boolean)
-  .map(local => (local.includes('@') ? local : local + '@' + EMAIL_DOMAIN));
-
-export function isKnownMailbox(address: string): boolean {
-  return MAILBOXES.includes(address.trim().toLowerCase());
-}
+export const EMAIL_DOMAIN = (process.env.EMAIL_DOMAIN ?? 'uniogate.com').toLowerCase();

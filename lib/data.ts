@@ -63,6 +63,35 @@ export function isAdminRole(value: unknown): value is AdminRole {
   return ADMIN_ROLES.includes(value as AdminRole);
 }
 
-export type Admin = { name: string; email: string; role: AdminRole };
+export type Admin = {
+  name: string;
+  email: string;
+  role: AdminRole;
+  /** Set means the account is suspended: the row stays, the sign-in stops. */
+  suspendedAt: string | null;
+};
+
+/**
+ * An address on the sending domain. `assignedTo` is an admin's email, or null
+ * for a shared mailbox like support@ — the difference decides who can see it.
+ */
+export type Mailbox = {
+  address: string;
+  label: string;
+  assignedTo: string | null;
+  /** Suspended: still receives and is still readable, but cannot send. */
+  suspendedAt: string | null;
+  createdAt: string;
+};
+
+/**
+ * Who may read and send as a mailbox. An Owner sees everything — they
+ * administer the domain. Everyone else gets the shared addresses plus their
+ * own, which is what assigning one is for.
+ */
+export function canUseMailbox(box: Mailbox, viewer: { email: string; role: AdminRole }): boolean {
+  if (viewer.role === 'Owner') return true;
+  return box.assignedTo === null || box.assignedTo === viewer.email;
+}
 
 export type ActivityEntry = { text: string; when: string; kind: string };

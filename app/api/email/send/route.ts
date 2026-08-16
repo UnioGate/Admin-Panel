@@ -4,7 +4,9 @@ import { requireAdmin } from '@/lib/auth';
 import { addressOf, replyToAddress } from '@/lib/email';
 import { insertOutbound } from '@/lib/email-queries';
 import { recordActivity } from '@/lib/queries';
-import { isKnownMailbox, resend, resendConfigured } from '@/lib/resend';
+import { canUseMailbox } from '@/lib/data';
+import { findMailbox } from '@/lib/mailboxes';
+import { resend, resendConfigured } from '@/lib/resend';
 
 const ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -27,10 +29,19 @@ export async function POST(req: Request) {
   };
 
   const from = (body.from ?? '').trim().toLowerCase();
-  // The allowlist of send-as addresses is server-side. A client that posts an
-  // arbitrary `from` would otherwise be able to send as anything on the domain.
-  if (!isKnownMailbox(from)) {
+  // Three separate questions, all answered server-side. The client picks a
+  // `from` and a client can post anything, so none of this may be inferred from
+  // what the UI offered: Resend would happily send as any address on the
+  // verified domain if we asked it to.
+  const box = await findMailbox(from);
+  if (!box) {
     return NextResponse.json({ error: 'Not a configured mailbox: ' + from }, { status: 400 });
+  }
+  if (box.suspendedAt) {
+    return NextResponse.json({ error: from + ' is suspended and cannot send.' }, { status: 403 });
+  }
+  if (!canUseMailbox(box, session)) {
+    return NextResponse.json({ error: from + ' is not one of your mailboxes.' }, { status: 403 });
   }
 
   const to = normaliseList(body.to);

@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { supabase } from './supabase';
-import { MAILBOXES } from './resend';
+import { ourAddresses } from './mailboxes';
 import {
   addressOf,
   baseAddress,
@@ -66,11 +66,15 @@ export type ThreadsResult = { threads: EmailThread[]; provisioned: boolean };
  * in memory — fine at this volume, and the limit keeps it bounded.
  */
 export async function fetchThreads(limit = 500): Promise<ThreadsResult> {
-  const { data, error } = await supabase
-    .from('emails')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  const [{ data, error }, ours] = await Promise.all([
+    supabase
+      .from('emails')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit),
+    // Needed to tell our own addresses from the people we are talking to.
+    ourAddresses()
+  ]);
 
   if (error) {
     if (MISSING_TABLE.includes(error.code)) return { threads: [], provisioned: false };
@@ -79,7 +83,7 @@ export async function fetchThreads(limit = 500): Promise<ThreadsResult> {
 
   return {
     provisioned: true,
-    threads: groupIntoThreads((data as EmailRow[]).map(toMessage), MAILBOXES)
+    threads: groupIntoThreads((data as EmailRow[]).map(toMessage), ours)
   };
 }
 
@@ -194,7 +198,7 @@ export async function insertInbound(email: {
   const { error } = await supabase.from('emails').insert({
     thread_id: threadId,
     direction: 'inbound',
-    mailbox: inboundMailbox(recipients, MAILBOXES),
+    mailbox: inboundMailbox(recipients, await ourAddresses()),
     from_address: address,
     from_name: name,
     to_addresses: email.to.map(baseAddress),

@@ -16,9 +16,18 @@ create table if not exists public.admins (
   -- delete mail. lib/data.ts mirrors this list — change one, change the other.
   role       text        not null default 'Admin' check (role in ('Owner', 'Admin', 'Support')),
   created_at timestamptz not null default now(),
+  -- Set means the account is suspended: the row stays, the sign-in stops.
+  -- Suspending rather than deleting keeps the person's name against everything
+  -- they did in the activity log, which a delete would leave pointing at
+  -- nobody. Only an Owner can set or clear it.
+  suspended_at timestamptz,
   -- Email of the admin who added this row; null for the seed.
   added_by   text
 );
+
+-- For consoles created before suspension existed. `if not exists` makes this a
+-- no-op on a fresh install, so the whole file stays safe to re-run.
+alter table public.admins add column if not exists suspended_at timestamptz;
 
 -- Addresses are compared lowercased everywhere in the app. This stops a row
 -- being inserted that the lookup could never match.

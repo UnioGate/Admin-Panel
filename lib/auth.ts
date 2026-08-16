@@ -30,6 +30,13 @@ export async function requireAdmin(): Promise<AdminSession | null> {
     const admin = await findAdmin(email);
     if (!admin) return null;
 
+    // Suspension is checked here rather than at the door of each route, so
+    // there is one place it can be got wrong. It is the whole difference
+    // between suspending and deleting: the row survives, so the person keeps
+    // their name against everything in the activity log, but nothing they send
+    // gets a session.
+    if (admin.suspendedAt) return null;
+
     // Identity and role both come from the row, never from the request, so a
     // client that edits its own copy of the list gains nothing.
     return { userId: claims.userId, email: admin.email, name: admin.name, role: admin.role };

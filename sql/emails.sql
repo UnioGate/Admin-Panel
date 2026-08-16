@@ -18,9 +18,10 @@ create table if not exists public.emails (
   thread_id     uuid        not null,
   direction     text        not null check (direction in ('inbound', 'outbound')),
 
-  -- Which of our addresses this belongs to (support@, hello@, …). Null when an
-  -- inbound message arrived at an address outside EMAIL_MAILBOXES — the MX is a
-  -- catch-all, so that can happen.
+  -- Which of our addresses this belongs to (support@, hello@, …). Plain text,
+  -- not a reference to `mailboxes`: a conversation should survive the address
+  -- it came through being deleted. Null when an inbound message arrived at an
+  -- address we have no mailbox for — the MX is a catch-all, so that happens.
   mailbox       text,
 
   from_address  text        not null,

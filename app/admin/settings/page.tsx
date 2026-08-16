@@ -1,13 +1,17 @@
 'use client';
 
 import { useState } from 'react';
+import MailboxSettings from '@/components/MailboxSettings';
 import PageHeader from '@/components/PageHeader';
 import { ADMIN_ROLES, type AdminRole } from '@/lib/data';
 import { useAdmin } from '@/lib/store';
 import { btnPrimary, c, card, display, input } from '@/lib/theme';
 
 export default function SettingsPage() {
-  const { session, admins, adminsProvisioned, addAdmin, renameAdmin, setAdminRole, removeAdmin, flash } = useAdmin();
+  const {
+    session, admins, adminsProvisioned,
+    addAdmin, renameAdmin, setAdminRole, suspendAdmin, removeAdmin, flash
+  } = useAdmin();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<AdminRole>('Admin');
@@ -17,7 +21,9 @@ export default function SettingsPage() {
   // The API is the check that counts — this only decides what to render, so a
   // non-Owner sees the list read-only instead of buttons that would 403.
   const isOwner = session?.role === 'Owner';
-  const owners = admins.filter(a => a.role === 'Owner').length;
+  // Suspended Owners do not count, matching lib/admins.ts: an Owner who cannot
+  // sign in is no use for administering the console.
+  const owners = admins.filter(a => a.role === 'Owner' && !a.suspendedAt).length;
 
   // Renames are committed on blur rather than per keystroke; holding them in
   // local state keeps the input from fighting the value coming back from the
@@ -54,11 +60,13 @@ export default function SettingsPage() {
             <>
               {admins.map(a => {
                 const isMe = a.email === session?.email;
+                const suspended = !!a.suspendedAt;
                 // Refusing here mirrors the API: the last Owner cannot be
-                // demoted or removed, or the console becomes unadministrable.
-                const lastOwner = a.role === 'Owner' && owners <= 1;
+                // demoted, suspended or removed, or the console becomes
+                // unadministrable.
+                const lastOwner = a.role === 'Owner' && !suspended && owners <= 1;
                 return (
-                  <div key={a.email} className="admin-row" style={{ padding: '14px 0', borderTop: '0.5px solid ' + c.line, fontSize: 15 }}>
+                  <div key={a.email} className="admin-row" style={{ padding: '14px 0', borderTop: '0.5px solid ' + c.line, fontSize: 15, opacity: suspended ? 0.6 : 1 }}>
                     {isOwner ? (
                       <input
                         value={draft[a.email] ?? a.name}
@@ -75,7 +83,14 @@ export default function SettingsPage() {
                       <span>{a.name}</span>
                     )}
 
-                    <span style={{ color: c.muted, fontSize: 14, overflowWrap: 'anywhere' }}>{a.email}</span>
+                    <span style={{ color: c.muted, fontSize: 14, overflowWrap: 'anywhere' }}>
+                      {a.email}
+                      {suspended ? (
+                        <span style={{ marginLeft: 8, fontSize: 12, background: c.bg, color: c.soft, padding: '3px 9px', borderRadius: 20 }}>
+                          Suspended
+                        </span>
+                      ) : null}
+                    </span>
 
                     {isOwner && !lastOwner ? (
                       <select
@@ -89,19 +104,30 @@ export default function SettingsPage() {
                       <span style={{ background: c.bg, color: c.muted, padding: '5px 14px', borderRadius: 20, fontSize: 13, whiteSpace: 'nowrap' }}>{a.role}</span>
                     )}
 
+                    {/* Both actions share the last cell so the row stays four
+                        columns wide — the mobile rule folds it by position. */}
                     {isOwner && !isMe && !lastOwner ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirmRemove !== a.email) { setConfirmRemove(a.email); return; }
-                          setConfirmRemove('');
-                          void removeAdmin(a.email);
-                        }}
-                        onBlur={() => setConfirmRemove('')}
-                        style={{ background: 'transparent', border: '0.7px solid ' + (confirmRemove === a.email ? '#B3261E' : c.faintBorder), color: confirmRemove === a.email ? '#B3261E' : c.soft, borderRadius: 20, padding: '6px 14px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                      >
-                        {confirmRemove === a.email ? 'Confirm' : 'Remove'}
-                      </button>
+                      <span style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                        <button
+                          type="button"
+                          onClick={() => void suspendAdmin(a.email, !suspended)}
+                          style={{ background: 'transparent', border: '0.7px solid ' + c.faintBorder, color: c.soft, borderRadius: 20, padding: '6px 14px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        >
+                          {suspended ? 'Restore' : 'Suspend'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirmRemove !== a.email) { setConfirmRemove(a.email); return; }
+                            setConfirmRemove('');
+                            void removeAdmin(a.email);
+                          }}
+                          onBlur={() => setConfirmRemove('')}
+                          style={{ background: 'transparent', border: '0.7px solid ' + (confirmRemove === a.email ? '#B3261E' : c.faintBorder), color: confirmRemove === a.email ? '#B3261E' : c.soft, borderRadius: 20, padding: '6px 14px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        >
+                          {confirmRemove === a.email ? 'Confirm' : 'Remove'}
+                        </button>
+                      </span>
                     ) : <span />}
                   </div>
                 );
@@ -120,8 +146,10 @@ export default function SettingsPage() {
                     </button>
                   </div>
                   <p style={{ margin: '14px 0 0', fontSize: 13, color: c.soft, fontWeight: 300, lineHeight: 1.6 }}>
-                    Adding someone lets them sign in with Privy immediately. Only an Owner can change this
-                    list, and the last Owner cannot be removed or demoted.
+                    Adding someone lets them sign in with Privy immediately. Suspending keeps their row
+                    and their name in the activity log but stops the sign-in; removing also suspends
+                    and detaches any mailbox that was theirs. Only an Owner can change this list, and
+                    the last Owner cannot be removed, demoted or suspended.
                   </p>
                 </>
               ) : (
@@ -132,6 +160,8 @@ export default function SettingsPage() {
             </>
           )}
         </section>
+
+        <MailboxSettings />
 
         <section style={{ ...card, background: c.ink, color: c.white }}>
           <h2 style={{ margin: '0 0 4px', fontFamily: display, fontSize: 22, fontWeight: 500 }}>Privy configuration</h2>
