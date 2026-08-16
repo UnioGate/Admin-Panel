@@ -1,7 +1,8 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { ADMINS, BASE_ACTIVITY, type Admin, type ActivityEntry } from './data';
+import { ADMIN_ALLOWLIST } from './allowlist';
+import { BASE_ACTIVITY, type Admin, type ActivityEntry } from './data';
 
 type Ctx = {
   hidden: Record<string, boolean>;
@@ -23,7 +24,7 @@ const AdminCtx = createContext<Ctx | null>(null);
 export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [hidden, setHidden] = useState<Record<string, boolean>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const [admins, setAdmins] = useState<Admin[]>(ADMINS);
+  const [admins, setAdmins] = useState<Admin[]>(ADMIN_ALLOWLIST);
   const [log, setLog] = useState<ActivityEntry[]>([]);
   const [toast, setToast] = useState('');
 
@@ -64,11 +65,17 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     flash('Note saved to the record.');
   }, [flash, note]);
 
+  // TODO: persist to the allowlist table once it exists. Until then this is
+  // session-only — the server check in lib/auth.ts reads ADMIN_ALLOWLIST, so a
+  // name added here cannot actually sign in.
   const addAdmin = useCallback((name: string, email: string) => {
-    const display = name.trim() || email.split('@')[0];
-    setAdmins(a => [...a, { name: display, email, role: 'Admin' }]);
-    note(display + ' (' + email + ') added to the admin allowlist', 'Access');
-    flash(display + ' can now sign in with Privy.');
+    const normalised = email.trim().toLowerCase();
+    const display = name.trim() || normalised.split('@')[0];
+    setAdmins(a => (
+      a.some(x => x.email === normalised) ? a : [...a, { name: display, email: normalised, role: 'Admin' }]
+    ));
+    note(display + ' (' + normalised + ') staged for the admin allowlist', 'Access');
+    flash('Staged for this session. Add ' + normalised + ' to ADMIN_ALLOWLIST to make it stick.');
   }, [flash, note]);
 
   const renameAdmin = useCallback((index: number, name: string) => {

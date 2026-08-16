@@ -25,11 +25,9 @@ export type Admin = { name: string; email: string; role: 'Owner' | 'Admin' | 'Su
 
 export type ActivityEntry = { text: string; when: string; kind: string };
 
-export const ADMINS: Admin[] = [
-  { name: 'Ify Okafor', email: 'ops@uniogate.com', role: 'Owner' },
-  { name: 'Daniel Mensah', email: 'growth@uniogate.com', role: 'Admin' },
-  { name: 'Rita Alabi', email: 'support@uniogate.com', role: 'Support' }
-];
+// The admin allowlist is no longer mocked here — it is parsed from the
+// environment in lib/allowlist.ts so the client guard and the server check
+// cannot disagree about who is an admin.
 
 const FIRST = ['ada','marcus','sofia','kenji','dmitri','nadia','joseph','elena','tom','priya','luca','amara','yusuf','clara','ben','ines','omar','lena','felix','zara','ravi','mia','noah','sana','pablo','ivy','hugo','tess','kwame','anya'];
 const LAST = ['okonkwo','lee','reyes','tanaka','sokolov','haddad','mwangi','novak','bergstrom','nair','ferrari','diallo','ahmed','mendes','olsen','costa','farouk','weber','braun','ali','patel','chen','schmidt','yilmaz','moreno','kelly','duarte','lund','mensah','petrova'];

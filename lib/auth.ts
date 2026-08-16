@@ -1,6 +1,6 @@
 import { PrivyClient } from '@privy-io/server-auth';
 import { cookies } from 'next/headers';
-import { ADMINS } from './data';
+import { isAllowed, parseAllowlist } from './allowlist';
 
 const privy = new PrivyClient(
   process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? '',
@@ -19,12 +19,14 @@ export async function requireAdmin(): Promise<AdminSession | null> {
     const claims = await privy.verifyAuthToken(token);
     const user = await privy.getUser(claims.userId);
     const email = user.email?.address ?? '';
-    const allowlist = (process.env.ADMIN_ALLOWLIST ?? ADMINS.map(a => a.email).join(','))
-      .split(',')
-      .map(s => s.trim().toLowerCase())
-      .filter(Boolean);
+    // Prefer the server-only var; fall back to the public one the client guard
+    // reads so a single-var setup still works. No mock fallback: an unset
+    // allowlist admits nobody.
+    const allowlist = parseAllowlist(
+      process.env.ADMIN_ALLOWLIST ?? process.env.NEXT_PUBLIC_ADMIN_ALLOWLIST
+    );
 
-    if (!email || !allowlist.includes(email.toLowerCase())) return null;
+    if (!isAllowed(email, allowlist)) return null;
     return { userId: claims.userId, email };
   } catch {
     return null;
