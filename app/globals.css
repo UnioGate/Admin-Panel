@@ -1,0 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #E9ECF3;
+  color: #10182A;
+  font-family: 'Sora', Arial, sans-serif;
+}
+
+a { color: #253E86; text-decoration: none; }
+a:hover { color: #10182A; }
+
+input, textarea, select, button { font-family: 'Sora', Arial, sans-serif; }
+input::placeholder, textarea::placeholder { color: #9AA0AE; }
+::selection { background: #253E86; color: #fff; }
+
+table { border-collapse: collapse; }
+
+:focus-visible { outline: 2px solid #253E86; outline-offset: 2px; }
