@@ -12,12 +12,13 @@ import ConfirmModal from './ConfirmModal';
 const NAV = [
   { href: '/admin', label: 'Overview' },
   { href: '/admin/waitlist', label: 'Waitlist' },
+  { href: '/admin/email', label: 'Email' },
   { href: '/admin/messages', label: 'Messages' },
   { href: '/admin/activity', label: 'Activity log' },
   { href: '/admin/settings', label: 'Settings' }
 ];
 
-export default function Sidebar({ unread }: { unread: number }) {
+export default function Sidebar({ unread, unreadEmail }: { unread: number; unreadEmail: number }) {
   const pathname = usePathname();
   const { user, logout } = usePrivy();
   const { admins } = useAdmin();
@@ -40,7 +41,8 @@ export default function Sidebar({ unread }: { unread: number }) {
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 14px', flex: 1 }}>
         {NAV.map(item => {
           const on = pathname === item.href;
-          const badge = item.href === '/admin/messages' && unread ? String(unread) : '';
+          const count = item.href === '/admin/messages' ? unread : item.href === '/admin/email' ? unreadEmail : 0;
+          const badge = count ? String(count) : '';
           return (
             <Link
               key={item.href}
