@@ -22,11 +22,25 @@ create table if not exists public.admins (
 
 -- Addresses are compared lowercased everywhere in the app. This stops a row
 -- being inserted that the lookup could never match.
-alter table public.admins
-  add constraint admins_email_lowercase check (email = lower(email));
+--
+-- `add constraint` has no `if not exists`, so it is guarded: everything else
+-- here is safe to run twice and this should be too.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'admins_email_lowercase'
+  ) then
+    alter table public.admins
+      add constraint admins_email_lowercase check (email = lower(email));
+  end if;
+end $$;
 
+-- One `values`, then a comma-separated tuple per person. A second `values`
+-- keyword is a syntax error. Addresses must be lowercase, or the check
+-- constraint above rejects the row.
 insert into public.admins (email, name, role)
-values ('chidileozoemena@gmail.com', 'Chidile Ozoemena', 'Owner')
+values
+  ('chidileozoemena@gmail.com', 'Chidile Ozoemena', 'Owner')
 on conflict (email) do nothing;
 
 -- Same posture as the other tables: RLS on with no policies, so the anon key
