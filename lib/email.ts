@@ -38,7 +38,28 @@ export type EmailThread = {
   messages: EmailMessage[];
   lastActivity: string;
   unread: number;
+  /** Somebody wrote to us on this thread, so it belongs in Inbox. */
+  hasInbound: boolean;
+  /** We wrote on this thread, so it belongs in Sent. A conversation that ran
+      both ways is in both folders — that is what every mail client does, and
+      splitting it in two would tear the conversation apart. */
+  hasOutbound: boolean;
+  /** We sent the first message. Used to tell a reply we are still waiting on
+      from an enquiry we have not answered. */
+  weStarted: boolean;
+  /** We spoke last. On a thread we started that means nobody has come back. */
+  awaitingReply: boolean;
 };
+
+/** The two folders a thread can appear in. `all` is the unfiltered view. */
+export const EMAIL_FOLDERS = ['all', 'inbox', 'sent'] as const;
+export type EmailFolder = (typeof EMAIL_FOLDERS)[number];
+
+export function threadInFolder(thread: EmailThread, folder: EmailFolder): boolean {
+  if (folder === 'inbox') return thread.hasInbound;
+  if (folder === 'sent') return thread.hasOutbound;
+  return true;
+}
 
 /** `"Ada Lovelace <ada@example.com>"` → name and address, either of which may be absent. */
 export function parseAddress(raw: string): { name: string | null; address: string } {
@@ -146,7 +167,11 @@ export function groupIntoThreads(messages: EmailMessage[], ours: string[]): Emai
         correspondents: correspondentsOf(ordered, ours),
         messages: ordered,
         lastActivity: last.createdAt,
-        unread: ordered.filter(m => m.direction === 'inbound' && !m.readAt).length
+        unread: ordered.filter(m => m.direction === 'inbound' && !m.readAt).length,
+        hasInbound: ordered.some(m => m.direction === 'inbound'),
+        hasOutbound: ordered.some(m => m.direction === 'outbound'),
+        weStarted: ordered[0].direction === 'outbound',
+        awaitingReply: last.direction === 'outbound'
       };
     })
     .sort((a, b) => b.lastActivity.localeCompare(a.lastActivity));

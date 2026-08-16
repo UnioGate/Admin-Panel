@@ -116,12 +116,16 @@ export default function LoginPage() {
         <Image src="/landing-page-images/hero-bg.png" alt="" fill style={{ objectFit: 'cover' }} priority />
       </div>
 
-      <nav className="login-nav" style={{ position: 'relative', zIndex: 2, width: '90%', margin: '24px auto 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FFFFFF4D', borderRadius: 40 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Image src="/logo/logo.png" alt="" width={34} height={34} />
-          <span style={{ fontFamily: display, fontSize: 26, fontWeight: 600, color: c.blue, letterSpacing: '-0.01em' }}>UnioGate</span>
+      {/* Width, padding and the two type sizes are in globals.css so they can
+          step down on a phone, the way the marketing site's navbar does. */}
+      <nav className="login-nav" style={{ position: 'relative', zIndex: 2, margin: '24px auto 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FFFFFF4D', borderRadius: 40 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <Image className="login-logo" src="/logo/logo.png" alt="" width={34} height={34} />
+          <span className="login-mark" style={{ fontFamily: display, fontWeight: 600, color: c.blue, letterSpacing: '-0.01em' }}>UnioGate</span>
         </span>
-        <span style={{ background: c.ink, color: c.white, padding: '10px 20px', borderRadius: 20, fontSize: 15 }}>Internal console</span>
+        {/* nowrap: "Internal console" broke onto two lines and made the pill
+            twice as tall as the logo beside it. */}
+        <span className="login-chip" style={{ background: c.ink, color: c.white, borderRadius: 20, whiteSpace: 'nowrap' }}>Internal console</span>
       </nav>
 
       <div className="login-grid" style={{ position: 'relative', zIndex: 2, width: '90%', maxWidth: 1180, margin: '0 auto', flex: 1 }}>

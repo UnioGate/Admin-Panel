@@ -115,8 +115,15 @@ table { border-collapse: collapse; }
   gap: 24px;
 }
 /* A toolbar sitting directly above a `.page-pad-tight` body, so the two share
-   the vertical rhythm rather than each carrying a full 32px. */
-.filter-bar { padding: 24px 40px 0; }
+   the vertical rhythm rather than each carrying a full 32px. The flex
+   properties are here, not inline, so `.stack-sm` can override them. */
+.filter-bar {
+  padding: 24px 40px 0;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
 .page-pad-tight { padding: 20px 40px 40px; }
 
 .page-title { font-size: 38px; }
@@ -221,17 +228,41 @@ table { border-collapse: collapse; }
 
 .login-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 60px; align-items: center; padding: 64px 0; }
 .login-title { font-size: 64px; }
-.login-nav { gap: 40px; padding: 16px 18px; }
+/* The marketing site's navbar is 95% wide on a phone and 90% above it, and
+   steps the logo and the pill down a size. Same here. */
+.login-nav { width: 90%; gap: 40px; padding: 16px 18px; }
+.login-mark { font-size: 26px; }
+.login-logo { width: 34px; height: 34px; }
+.login-chip { padding: 10px 20px; font-size: 15px; }
 .login-card { padding: 40px; }
 
 @media (max-width: 767.98px) {
   .login-grid { grid-template-columns: 1fr; gap: 32px; padding: 32px 0; }
   .login-title { font-size: 38px; }
-  .login-nav { gap: 12px; padding: 10px 14px; }
+  .login-nav { width: 95%; gap: 10px; padding: 8px 8px 8px 14px; }
+  .login-mark { font-size: 20px; }
+  .login-logo { width: 26px; height: 26px; }
+  .login-chip { padding: 8px 13px; font-size: 13px; }
   .login-card { padding: 24px; }
   /* The line break in the headline is deliberate at desktop width and wrong
      at phone width, where it leaves one word stranded. */
   .login-title br { display: none; }
+}
+
+/* --- Segmented control ---------------------------------------------------
+   Folder tabs. Sized to content on desktop; on a phone it spans the width so
+   the three targets are big enough to hit. */
+
+.segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 24px;
+  background: #DDE1EB;
+}
+
+@media (max-width: 767.98px) {
+  .segmented { width: 100%; }
 }
 
 /* --- Utilities ----------------------------------------------------------- */

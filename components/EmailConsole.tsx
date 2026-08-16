@@ -3,7 +3,10 @@
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import PageHeader from '@/components/PageHeader';
-import { quoteForReply, replySubject, stripHtml, type EmailMessage, type EmailThread } from '@/lib/email';
+import {
+  quoteForReply, replySubject, stripHtml, threadInFolder,
+  type EmailFolder, type EmailMessage, type EmailThread
+} from '@/lib/email';
 import { relative, shortDate } from '@/lib/format';
 import { useAdmin } from '@/lib/store';
 import { btnPrimary, btnSecondary, c, card, display, input, pill } from '@/lib/theme';
@@ -23,6 +26,7 @@ export default function EmailConsole({
   const router = useRouter();
 
   const [mailbox, setMailbox] = useState('All');
+  const [folder, setFolder] = useState<EmailFolder>('all');
   const [openId, setOpenId] = useState<string | null>(threads[0]?.id ?? null);
   const [busy, setBusy] = useState(false);
   const [composing, setComposing] = useState(false);
@@ -30,13 +34,29 @@ export default function EmailConsole({
   const [reply, setReply] = useState('');
   const [draft, setDraft] = useState<Draft>({ from: mailboxes[0] ?? '', to: '', cc: '', subject: '', text: '' });
 
-  const visible = useMemo(
+  // The mailbox filter and the folder filter are independent: "support@, sent"
+  // is a reasonable thing to ask for.
+  const inMailbox = useMemo(
     () => (mailbox === 'All' ? threads : threads.filter(t => t.mailbox === mailbox)),
     [threads, mailbox]
   );
 
+  const visible = useMemo(
+    () => inMailbox.filter(t => threadInFolder(t, folder)),
+    [inMailbox, folder]
+  );
+
+  // Counted after the mailbox filter, so the tabs describe what you would
+  // actually get if you clicked them.
+  const counts = useMemo(() => ({
+    all: inMailbox.length,
+    inbox: inMailbox.filter(t => t.hasInbound).length,
+    sent: inMailbox.filter(t => t.hasOutbound).length
+  }), [inMailbox]);
+
   const open = visible.find(t => t.id === openId) ?? visible[0] ?? null;
   const unread = threads.reduce((n, t) => n + t.unread, 0);
+  const awaiting = inMailbox.filter(t => t.hasOutbound && t.awaitingReply).length;
 
   async function post(url: string, method: string, body: unknown): Promise<boolean> {
     setBusy(true);
@@ -132,15 +152,40 @@ export default function EmailConsole({
     <>
       <PageHeader
         title="Email"
-        subtitle={unread ? unread + ' unread across ' + threads.length + ' conversations' : threads.length + ' conversations'}
+        subtitle={
+          [
+            threads.length + ' conversation' + (threads.length === 1 ? '' : 's'),
+            unread ? unread + ' unread' : '',
+            awaiting ? awaiting + ' awaiting a reply' : ''
+          ].filter(Boolean).join(' · ')
+        }
       />
 
-      <div className="filter-bar" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        {['All', ...mailboxes].map(m => (
-          <button key={m} type="button" onClick={() => { setMailbox(m); setOpenId(null); }} style={pill(mailbox === m)}>
-            {m === 'All' ? 'All mailboxes' : m}
-          </button>
-        ))}
+      <div className="filter-bar stack-sm">
+        {/* Folder first: which half of the conversation you are looking for is
+            a bigger question than which address it went through. */}
+        <div className="segmented" role="group" aria-label="Folder">
+          {([
+            ['all', 'All', counts.all],
+            ['inbox', 'Inbox', counts.inbox],
+            ['sent', 'Sent', counts.sent]
+          ] as const).map(([key, label, n]) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={folder === key}
+              onClick={() => { setFolder(key); setOpenId(null); }}
+              style={{
+                flex: 1, background: folder === key ? c.ink : 'transparent',
+                color: folder === key ? c.white : c.ink, border: 0, borderRadius: 20,
+                padding: '9px 18px', fontSize: 15, cursor: 'pointer', whiteSpace: 'nowrap'
+              }}
+            >
+              {label} <span style={{ opacity: 0.65, fontSize: 13 }}>{n}</span>
+            </button>
+          ))}
+        </div>
+
         <button
           type="button"
           onClick={() => setComposing(true)}
@@ -150,11 +195,31 @@ export default function EmailConsole({
         </button>
       </div>
 
+      {/* One mailbox means the pills would be a row of one — not worth the space. */}
+      {mailboxes.length > 1 ? (
+        <div className="filter-bar scroll-x" style={{ flexWrap: 'nowrap', paddingTop: 12 }}>
+          {['All', ...mailboxes].map(m => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => { setMailbox(m); setOpenId(null); }}
+              style={{ ...pill(mailbox === m), whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              {m === 'All' ? 'All mailboxes' : m}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <div className="page-pad-tight two-pane-wide">
         <div style={{ background: c.white, borderRadius: 10, overflow: 'hidden' }}>
           {visible.length === 0 ? (
-            <div style={{ padding: 24, fontSize: 15, color: c.muted, fontWeight: 300 }}>
-              Nothing here yet.
+            <div style={{ padding: 24, fontSize: 15, color: c.muted, fontWeight: 300, lineHeight: 1.6 }}>
+              {folder === 'inbox'
+                ? 'Nothing has come in here yet.'
+                : folder === 'sent'
+                  ? 'You have not sent anything from this mailbox yet.'
+                  : 'Nothing here yet.'}
             </div>
           ) : visible.map(t => {
             const on = open?.id === t.id;
@@ -174,10 +239,25 @@ export default function EmailConsole({
                 <div style={{ fontSize: 14, color: c.blue, marginTop: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {t.subject}
                 </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
                   {t.mailbox ? (
                     <span style={{ fontSize: 11, background: c.bg, color: c.muted, padding: '3px 9px', borderRadius: 20 }}>{t.mailbox}</span>
                   ) : null}
+
+                  {/* The state of a conversation we started: still waiting, or
+                      they came back. Without this, Sent is a list of things you
+                      cannot tell apart. */}
+                  {t.hasOutbound && t.awaitingReply ? (
+                    <span style={{ fontSize: 11, background: c.bg, color: c.soft, padding: '3px 9px', borderRadius: 20 }}>
+                      Awaiting reply
+                    </span>
+                  ) : null}
+                  {t.weStarted && t.hasInbound ? (
+                    <span style={{ fontSize: 11, background: c.blueTint, color: c.blue, padding: '3px 9px', borderRadius: 20 }}>
+                      Replied
+                    </span>
+                  ) : null}
+
                   {t.messages.length > 1 ? (
                     <span style={{ fontSize: 11, color: c.soft }}>{t.messages.length} messages</span>
                   ) : null}

@@ -72,6 +72,10 @@ Breakpoints are the marketing site's (Tailwind's defaults): **1024px** and **768
     .activity-row                 Grid areas, so the timestamp moves without the DOM
                                   order changing
     .drawer / .drawer-narrow      Fixed widths → full-bleed
+    .login-nav / .login-mark      The login navbar, stepped down the way the marketing
+    .login-logo / .login-chip     site's does: 90% wide → 95%, and smaller type
+    .segmented                    The email folder tabs: content-width → full-width, so
+                                  the three targets are big enough to hit on a phone
     .scroll-x / .stack-sm         Wide content scrolls in its own box; toolbars stack
     .hide-sm                      Drops the decorative date from the page header
 
@@ -151,6 +155,24 @@ Setup, in order. Steps 1–4 are outside this repo and only you can do them.
 
 The page states its own status: it says so if Resend is unconfigured or the table is missing,
 rather than failing.
+
+### Folders
+
+**All · Inbox · Sent**, with the mailbox filter on a separate row because the two are
+independent — "support@, sent" is a reasonable thing to ask for.
+
+A thread is in Inbox if any message on it came in, and in Sent if any message on it went out,
+so a conversation that ran both ways is in **both**. That is what every mail client does, and
+it is the point: an outbox that hid the replies would tear conversations in half. Splitting by
+folder is a view, not a partition.
+
+Sent would otherwise be a list of things you cannot tell apart, so threads carry their state:
+
+    Awaiting reply   We spoke last — nobody has come back yet
+    Replied          We started it and they answered
+
+The counts on the tabs are taken after the mailbox filter, so they describe what you would
+actually get if you clicked them, and the subtitle totals conversations, unread and awaiting.
 
 ### How threading works
 
