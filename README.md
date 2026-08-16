@@ -49,6 +49,15 @@ server-only and every caller sits behind `requireAdmin()`):
                       status, handled_at, notes
     admin_activity    id, created_at, actor, action, target, kind
 
+`contact_messages.status` is pinned by a check constraint
+(`contact_messages_status_vals`) to `new | in_progress | replied | spam`. `MESSAGE_STATUSES`
+in `lib/data.ts` mirrors it — change one and you must change the other, or writes fail with
+`23514`. `handled_at` is set for the terminal states only.
+
+Deleting an enquiry is Owner only and permanent — there is no soft delete for
+`contact_messages` as there is for waitlist rows. The role comes from the server-only
+allowlist, so `app/api/messages/route.ts` enforces it; hiding the button is only a courtesy.
+
 `waitlist` has no rank column — position is signup order, computed from `created_at`. The
 console only shows what these columns hold; source, wallet and referral data would have to be
 captured by the marketing site's signup form first.

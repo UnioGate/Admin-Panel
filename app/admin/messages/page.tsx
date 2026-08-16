@@ -7,5 +7,5 @@ export default async function MessagesPage() {
   if (!session) return null;
 
   const messages = await fetchMessages();
-  return <MessageInbox messages={messages} />;
+  return <MessageInbox messages={messages} canDelete={session.role === 'Owner'} />;
 }

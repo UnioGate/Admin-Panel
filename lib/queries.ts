@@ -1,6 +1,6 @@
 import { relative } from './format';
 import { supabase } from './supabase';
-import type { ActivityEntry, Message, WaitlistEntry } from './data';
+import type { ActivityEntry, Message, MessageStatus, WaitlistEntry } from './data';
 
 // Postgres "relation does not exist" / PostgREST "table not in schema cache".
 // Both mean the migration in the README has not been run yet.
@@ -74,11 +74,29 @@ export async function fetchMessages(): Promise<Message[]> {
   }));
 }
 
-export async function setMessageStatus(id: string, status: 'new' | 'handled'): Promise<void> {
+export async function setMessageStatus(id: string, status: MessageStatus): Promise<void> {
+  // `handled_at` marks the point an enquiry stopped needing a reply, so it is
+  // set for the terminal states only — `in_progress` is still outstanding.
+  const done = status === 'replied' || status === 'spam';
+
   const { error } = await supabase
     .from('contact_messages')
-    .update({ status, handled_at: status === 'handled' ? new Date().toISOString() : null })
+    .update({ status, handled_at: done ? new Date().toISOString() : null })
     .eq('id', id);
+
+  if (error) {
+    // 23514 is a check constraint violation, which here means the status
+    // vocabulary in lib/data.ts has drifted from the database.
+    if (error.code === '23514') {
+      throw new Error('The database rejected the status "' + status + '".');
+    }
+    throw new Error('contact_messages: ' + error.message);
+  }
+}
+
+/** Hard delete — Owner only. The route handler enforces that, not this. */
+export async function deleteMessage(id: string): Promise<void> {
+  const { error } = await supabase.from('contact_messages').delete().eq('id', id);
   if (error) throw new Error('contact_messages: ' + error.message);
 }
 

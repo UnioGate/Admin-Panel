@@ -3,21 +3,26 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import PageHeader from '@/components/PageHeader';
-import type { Message } from '@/lib/data';
+import { MESSAGE_STATUSES, MESSAGE_STATUS_LABELS, type Message, type MessageStatus } from '@/lib/data';
 import { relative, subjectOf } from '@/lib/format';
 import { useAdmin } from '@/lib/store';
 import { btnSecondary, c, card, display } from '@/lib/theme';
 
-export default function MessageInbox({ messages }: { messages: Message[] }) {
+function labelFor(status: string): string {
+  return MESSAGE_STATUS_LABELS[status as MessageStatus] ?? status;
+}
+
+export default function MessageInbox({ messages, canDelete }: { messages: Message[]; canDelete: boolean }) {
   const { flash } = useAdmin();
   const router = useRouter();
   const [openId, setOpenId] = useState<string | null>(messages[0]?.id ?? null);
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const open = messages.find(m => m.id === openId) ?? messages[0] ?? null;
   const unread = messages.filter(m => m.status === 'new').length;
 
-  async function setStatus(id: string, status: 'new' | 'handled') {
+  async function setStatus(id: string, status: MessageStatus) {
     setBusy(true);
     const res = await fetch('/api/messages', {
       method: 'PATCH',
@@ -30,7 +35,26 @@ export default function MessageInbox({ messages }: { messages: Message[] }) {
       flash(error ?? 'Could not update the enquiry.');
       return;
     }
-    flash(status === 'handled' ? 'Enquiry marked resolved.' : 'Enquiry reopened.');
+    flash('Enquiry set to ' + MESSAGE_STATUS_LABELS[status].toLowerCase() + '.');
+    router.refresh();
+  }
+
+  async function remove(id: string) {
+    setBusy(true);
+    const res = await fetch('/api/messages', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    setBusy(false);
+    setConfirmDelete(false);
+    if (!res.ok) {
+      const { error } = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
+      flash(error ?? 'Could not delete the enquiry.');
+      return;
+    }
+    setOpenId(null);
+    flash('Enquiry deleted.');
     router.refresh();
   }
 
@@ -47,7 +71,7 @@ export default function MessageInbox({ messages }: { messages: Message[] }) {
     );
   }
 
-  const done = open.status === 'handled';
+  const done = open.status === 'replied' || open.status === 'spam';
 
   return (
     <>
@@ -62,7 +86,7 @@ export default function MessageInbox({ messages }: { messages: Message[] }) {
               <button
                 key={m.id}
                 type="button"
-                onClick={() => setOpenId(m.id)}
+                onClick={() => { setOpenId(m.id); setConfirmDelete(false); }}
                 style={{ display: 'block', width: '100%', textAlign: 'left', background: on ? '#F4F6FA' : c.white, border: 0, borderTop: '0.5px solid ' + c.line, borderLeft: '3px solid ' + (on ? c.blue : isUnread ? c.bar : 'transparent'), padding: '18px 20px', cursor: 'pointer' }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
@@ -92,7 +116,7 @@ export default function MessageInbox({ messages }: { messages: Message[] }) {
               ) : null}
             </div>
             <span style={{ background: done ? c.blueTint : c.bg, color: done ? c.blue : c.muted, padding: '6px 16px', borderRadius: 20, fontSize: 13, whiteSpace: 'nowrap' }}>
-              {done ? 'Resolved' : 'New'}
+              {labelFor(open.status)}
             </span>
           </div>
 
@@ -103,15 +127,65 @@ export default function MessageInbox({ messages }: { messages: Message[] }) {
               Replying from the console needs a transactional email provider, which is not wired up yet.
               Reply to <a href={'mailto:' + open.email} style={{ color: c.blue }}>{open.email}</a> directly for now.
             </p>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void setStatus(open.id, done ? 'new' : 'handled')}
-                style={{ ...btnSecondary, opacity: busy ? 0.6 : 1 }}
-              >
-                {done ? 'Reopen enquiry' : 'Mark resolved'}
-              </button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {MESSAGE_STATUSES.map(s => {
+                const on = open.status === s;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    disabled={busy || on}
+                    onClick={() => void setStatus(open.id, s)}
+                    style={{
+                      ...btnSecondary,
+                      padding: '10px 18px',
+                      fontSize: 14,
+                      background: on ? c.ink : c.white,
+                      color: on ? c.white : c.ink,
+                      borderColor: on ? c.ink : c.border,
+                      cursor: on ? 'default' : 'pointer',
+                      opacity: busy && !on ? 0.6 : 1
+                    }}
+                  >
+                    {MESSAGE_STATUS_LABELS[s]}
+                  </button>
+                );
+              })}
+
+              {canDelete ? (
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {confirmDelete ? (
+                    <>
+                      <span style={{ fontSize: 13, color: c.muted }}>Delete permanently?</span>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void remove(open.id)}
+                        style={{ ...btnSecondary, padding: '10px 18px', fontSize: 14, background: '#B3261E', color: c.white, borderColor: '#B3261E', opacity: busy ? 0.6 : 1 }}
+                      >
+                        Delete
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setConfirmDelete(false)}
+                        style={{ ...btnSecondary, padding: '10px 18px', fontSize: 14 }}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setConfirmDelete(true)}
+                      style={{ ...btnSecondary, padding: '10px 18px', fontSize: 14, color: '#B3261E', opacity: busy ? 0.6 : 1 }}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>

@@ -11,6 +11,24 @@ export type WaitlistEntry = {
   hiddenAt: string | null;
 };
 
+// contact_messages.status is constrained in the database
+// (contact_messages_status_vals). Anything outside this set is rejected by
+// Postgres, so this list is the authority for the whole console.
+export const MESSAGE_STATUSES = ['new', 'in_progress', 'replied', 'spam'] as const;
+
+export type MessageStatus = (typeof MESSAGE_STATUSES)[number];
+
+export const MESSAGE_STATUS_LABELS: Record<MessageStatus, string> = {
+  new: 'New',
+  in_progress: 'In progress',
+  replied: 'Replied',
+  spam: 'Spam'
+};
+
+export function isMessageStatus(value: unknown): value is MessageStatus {
+  return MESSAGE_STATUSES.includes(value as MessageStatus);
+}
+
 export type Message = {
   id: string;
   createdAt: string;
@@ -20,6 +38,8 @@ export type Message = {
   topic: string | null;
   business: string | null;
   volume: string | null;
+  // Widened deliberately: rows predating the constraint could hold anything,
+  // and the inbox should show them rather than crash on them.
   status: string;
   handledAt: string | null;
   notes: string | null;

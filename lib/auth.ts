@@ -1,13 +1,15 @@
 import { PrivyClient } from '@privy-io/server-auth';
 import { cookies } from 'next/headers';
-import { isAllowed, parseAllowlist } from './allowlist';
+import { parseAllowlist } from './allowlist';
 
 const privy = new PrivyClient(
   process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? '',
   process.env.PRIVY_APP_SECRET ?? ''
 );
 
-export type AdminSession = { userId: string; email: string };
+import type { Admin } from './data';
+
+export type AdminSession = { userId: string; email: string; role: Admin['role'] };
 
 // Verify the Privy session cookie and check the email against the allowlist.
 // Every admin route handler should call this before touching data.
@@ -26,8 +28,11 @@ export async function requireAdmin(): Promise<AdminSession | null> {
       process.env.ADMIN_ALLOWLIST ?? process.env.NEXT_PUBLIC_ADMIN_ALLOWLIST
     );
 
-    if (!isAllowed(email, allowlist)) return null;
-    return { userId: claims.userId, email };
+    const admin = allowlist.find(a => a.email === email.trim().toLowerCase());
+    if (!admin) return null;
+    // The role comes from the server-only allowlist, never from the request, so
+    // it cannot be spoofed by a client that edits its own copy.
+    return { userId: claims.userId, email: admin.email, role: admin.role };
   } catch {
     return null;
   }
