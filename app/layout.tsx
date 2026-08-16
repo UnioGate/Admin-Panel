@@ -10,7 +10,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
+      {/* Extensions such as Grammarly add attributes to <body> before React
+          hydrates, which reads as a mismatch. This is shallow: it covers this
+          element's own attributes, not anything rendered inside it. */}
+      <body suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>
