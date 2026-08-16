@@ -19,3 +19,229 @@ input::placeholder, textarea::placeholder { color: #9AA0AE; }
 table { border-collapse: collapse; }
 
 :focus-visible { outline: 2px solid #253E86; outline-offset: 2px; }
+
+/* ---------------------------------------------------------------------------
+   Responsive layout
+   ---------------------------------------------------------------------------
+   Everything else in this console is styled with inline `style={{}}`, which
+   cannot express a media query — and which beats any class, so a rule here only
+   works if the matching inline property has been removed from the component.
+   Only layout-bearing properties live here for that reason; colour and type
+   stay inline where the rest of the styling is.
+
+   Breakpoints match the marketing site (Tailwind's defaults): 768px and 1024px.
+   These are max-width queries because the inline base is the desktop layout,
+   so mobile is the override rather than the starting point.
+--------------------------------------------------------------------------- */
+
+/* --- Shell ---------------------------------------------------------------
+   The sidebar is a column of the grid on desktop and an off-canvas drawer
+   below 1024px, where 248px of a narrow screen is too much to give a nav. */
+
+.shell {
+  display: grid;
+  grid-template-columns: 248px 1fr;
+  min-height: 100vh;
+  background: #E9ECF3;
+}
+
+.shell-main { min-width: 0; }
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.topbar, .sidebar-scrim { display: none; }
+
+@media (max-width: 1023.98px) {
+  .shell { grid-template-columns: 1fr; }
+
+  /* Out of flow, so the grid collapses to topbar over main. */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(82vw, 288px);
+    /* dvh, not vh: mobile browser chrome would otherwise cut off the footer. */
+    height: 100dvh;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    overflow-y: auto;
+  }
+
+  .sidebar[data-open='true'] { transform: none; }
+
+  .sidebar-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    border: 0;
+    padding: 0;
+    background: rgba(16, 24, 42, 0.45);
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #10182A;
+    color: #fff;
+    position: sticky;
+    top: 0;
+    z-index: 40;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}
+
+/* --- Page furniture ------------------------------------------------------ */
+
+.page-pad { padding: 32px 40px; }
+.page-header {
+  padding: 32px 40px 24px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+/* A toolbar sitting directly above a `.page-pad-tight` body, so the two share
+   the vertical rhythm rather than each carrying a full 32px. */
+.filter-bar { padding: 24px 40px 0; }
+.page-pad-tight { padding: 20px 40px 40px; }
+
+.page-title { font-size: 38px; }
+
+@media (max-width: 767.98px) {
+  .page-pad { padding: 20px 16px; }
+  .filter-bar { padding: 16px 16px 0; }
+  .page-pad-tight { padding: 16px 16px 24px; }
+  /* The header's date/badge cluster drops under the title rather than
+     squeezing it to two words per line. */
+  .page-header {
+    padding: 20px 16px 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .page-title { font-size: 28px; }
+}
+
+/* --- Grids ---------------------------------------------------------------
+   Each of these is a fixed multi-column layout inline on desktop; the rules
+   below are the only thing that lets them reflow. */
+
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.split-main { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; align-items: start; }
+.two-pane { display: grid; grid-template-columns: 350px 1fr; gap: 20px; align-items: start; }
+.two-pane-wide { display: grid; grid-template-columns: 360px 1fr; gap: 20px; align-items: start; }
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+
+@media (max-width: 1023.98px) {
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .split-main,
+  .two-pane,
+  .two-pane-wide,
+  .settings-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 767.98px) {
+  /* Stacked, the list would push the message you opened hundreds of pixels
+     down the page. Cap it and let it scroll on its own instead. */
+  .two-pane > :first-child,
+  .two-pane-wide > :first-child { max-height: 320px; overflow-y: auto; }
+}
+
+@media (max-width: 519.98px) {
+  .stat-grid { grid-template-columns: 1fr; }
+}
+
+/* --- Rows ----------------------------------------------------------------
+   Rows whose columns are too narrow to survive a phone: they become stacked
+   blocks rather than four unreadable slivers. */
+
+.admin-row { display: grid; grid-template-columns: 1fr 1fr auto auto; align-items: center; gap: 10px; }
+
+.activity-row {
+  display: grid;
+  grid-template-columns: 112px 8px 1fr auto;
+  grid-template-areas: 'when dot text kind';
+  align-items: center;
+  gap: 16px;
+}
+
+.activity-when { grid-area: when; }
+.activity-dot  { grid-area: dot; }
+.activity-text { grid-area: text; }
+.activity-kind { grid-area: kind; }
+
+@media (max-width: 767.98px) {
+  /* Name and email take a full line each; role and the action share the last
+     one. Four columns on a phone would leave the email address unreadable. */
+  .admin-row { grid-template-columns: 1fr auto; align-items: center; }
+  .admin-row > *:nth-child(1),
+  .admin-row > *:nth-child(2) { grid-column: 1 / -1; }
+
+  /* Named areas rather than reordered markup: the timestamp and kind drop to a
+     second line under the text without the DOM order changing. */
+  .activity-row {
+    grid-template-columns: 8px 1fr auto;
+    grid-template-areas:
+      'dot  text text'
+      '.    when kind';
+    align-items: start;
+    gap: 6px 12px;
+  }
+
+  .activity-dot { margin-top: 7px; }
+  .activity-kind { justify-self: end; }
+}
+
+/* --- Drawers and modals -------------------------------------------------- */
+
+.drawer { width: 560px; max-width: 94vw; }
+.drawer-narrow { width: 460px; max-width: 92vw; }
+.modal-card { padding: 36px; }
+
+@media (max-width: 767.98px) {
+  .drawer, .drawer-narrow { width: 100vw; max-width: 100vw; }
+  .modal-card { padding: 24px; }
+}
+
+/* --- Login --------------------------------------------------------------- */
+
+.login-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 60px; align-items: center; padding: 64px 0; }
+.login-title { font-size: 64px; }
+.login-nav { gap: 40px; padding: 16px 18px; }
+.login-card { padding: 40px; }
+
+@media (max-width: 767.98px) {
+  .login-grid { grid-template-columns: 1fr; gap: 32px; padding: 32px 0; }
+  .login-title { font-size: 38px; }
+  .login-nav { gap: 12px; padding: 10px 14px; }
+  .login-card { padding: 24px; }
+  /* The line break in the headline is deliberate at desktop width and wrong
+     at phone width, where it leaves one word stranded. */
+  .login-title br { display: none; }
+}
+
+/* --- Utilities ----------------------------------------------------------- */
+
+/* Wide content — tables, toolbars — scrolls in its own box so the page body
+   never scrolls sideways. */
+.scroll-x { overflow-x: auto; }
+
+@media (max-width: 767.98px) {
+  .stack-sm { flex-direction: column; align-items: stretch; }
+  .stack-sm > * { margin-left: 0 !important; }
+  .hide-sm { display: none !important; }
+}

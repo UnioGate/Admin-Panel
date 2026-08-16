@@ -52,9 +52,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       adminsProvisioned={provisioned}
     >
       <AuthGuard>
-        <div style={{ display: 'grid', gridTemplateColumns: '248px 1fr', minHeight: '100vh', background: '#E9ECF3' }}>
+        {/* Grid columns and the sidebar's off-canvas behaviour live in
+            globals.css — a media query cannot be expressed inline. */}
+        <div className="shell">
           <Sidebar unread={unread} unreadEmail={emails} />
-          <main style={{ minWidth: 0 }}>{session ? children : null}</main>
+          <main className="shell-main">{session ? children : null}</main>
           <Toast />
         </div>
       </AuthGuard>

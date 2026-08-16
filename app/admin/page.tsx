@@ -52,8 +52,8 @@ export default async function OverviewPage() {
     <>
       <PageHeader title="Overview" subtitle="Waitlist growth and merchant enquiries at a glance" />
 
-      <div style={{ padding: '32px 40px', display: 'flex', flexDirection: 'column', gap: 28 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20 }}>
+      <div className="page-pad" style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+        <div className="stat-grid">
           {stats.map(s => (
             <div key={s.label} style={{ ...card, padding: 24 }}>
               <div style={{ fontSize: 14, color: c.muted }}>{s.label}</div>
@@ -63,7 +63,7 @@ export default async function OverviewPage() {
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 20, alignItems: 'start' }}>
+        <div className="split-main">
           <div style={card}>
             <SignupsChart days={days} />
           </div>

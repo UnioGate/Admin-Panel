@@ -116,7 +116,7 @@ export default function LoginPage() {
         <Image src="/landing-page-images/hero-bg.png" alt="" fill style={{ objectFit: 'cover' }} priority />
       </div>
 
-      <nav style={{ position: 'relative', zIndex: 2, width: '90%', margin: '24px auto 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 40, padding: '16px 18px', background: '#FFFFFF4D', borderRadius: 40 }}>
+      <nav className="login-nav" style={{ position: 'relative', zIndex: 2, width: '90%', margin: '24px auto 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FFFFFF4D', borderRadius: 40 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Image src="/logo/logo.png" alt="" width={34} height={34} />
           <span style={{ fontFamily: display, fontSize: 26, fontWeight: 600, color: c.blue, letterSpacing: '-0.01em' }}>UnioGate</span>
@@ -124,18 +124,20 @@ export default function LoginPage() {
         <span style={{ background: c.ink, color: c.white, padding: '10px 20px', borderRadius: 20, fontSize: 15 }}>Internal console</span>
       </nav>
 
-      <div style={{ position: 'relative', zIndex: 2, width: '90%', maxWidth: 1180, margin: '0 auto', flex: 1, display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 60, alignItems: 'center', padding: '64px 0' }}>
+      <div className="login-grid" style={{ position: 'relative', zIndex: 2, width: '90%', maxWidth: 1180, margin: '0 auto', flex: 1 }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 20 }}>
           <h4 style={{ margin: 0, fontSize: 16, fontWeight: 400, padding: '10px 20px', border: '0.7px solid #000', borderRadius: 20 }}>ADMIN ACCESS ONLY</h4>
-          <h1 style={{ margin: 0, fontFamily: display, fontSize: 64, lineHeight: '110%', fontWeight: 400 }}>
-            The room behind<br />the counter.
+          <h1 className="login-title" style={{ margin: 0, fontFamily: display, lineHeight: '110%', fontWeight: 400 }}>
+            {/* The space matters: the break is hidden on narrow screens and
+                without it the two halves run together. */}
+            The room behind{' '}<br />the counter.
           </h1>
           <p style={{ margin: 0, fontSize: 20, maxWidth: 520, fontWeight: 300, textWrap: 'pretty' }}>
             Waitlist, merchant enquiries and invites — one console for the people running UnioGate before launch.
           </p>
         </div>
 
-        <div style={{ background: c.white, borderRadius: 10, padding: 40, display: 'flex', flexDirection: 'column', gap: 18, boxShadow: '0 18px 50px rgba(16,24,42,0.10)' }}>
+        <div className="login-card" style={{ background: c.white, borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 18, boxShadow: '0 18px 50px rgba(16,24,42,0.10)' }}>
           <h2 style={{ margin: 0, fontFamily: display, fontSize: 30, fontWeight: 500 }}>Sign in</h2>
           <p style={{ margin: 0, fontSize: 16, color: c.muted, fontWeight: 300, lineHeight: 1.6 }}>
             Authentication runs through Privy. Only emails and wallets on the admin allowlist can open the console.

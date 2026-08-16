@@ -22,7 +22,7 @@ export default function RecordDrawer({
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(16,24,42,0.4)', zIndex: 44 }} />
-      <aside style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 460, maxWidth: '92vw', background: c.white, zIndex: 45, overflowY: 'auto', padding: 32, boxShadow: '-18px 0 50px rgba(16,24,42,0.22)', display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <aside className="drawer-narrow" style={{ position: 'fixed', top: 0, right: 0, bottom: 0, background: c.white, zIndex: 45, overflowY: 'auto', padding: 32, boxShadow: '-18px 0 50px rgba(16,24,42,0.22)', display: 'flex', flexDirection: 'column', gap: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
           <div>
             <div style={{ fontSize: 13, color: c.soft }}>Waitlist record</div>

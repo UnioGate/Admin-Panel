@@ -62,7 +62,7 @@ export default function MessageInbox({ messages, canDelete }: { messages: Messag
     return (
       <>
         <PageHeader title="Messages" subtitle="No enquiries yet" />
-        <div style={{ padding: '32px 40px' }}>
+        <div className="page-pad">
           <div style={{ ...card, padding: 28, fontSize: 15, color: c.muted, fontWeight: 300 }}>
             Nothing has come through the contact form yet.
           </div>
@@ -77,7 +77,7 @@ export default function MessageInbox({ messages, canDelete }: { messages: Messag
     <>
       <PageHeader title="Messages" subtitle={unread + ' unread of ' + messages.length + ' enquiries'} />
 
-      <div style={{ padding: '32px 40px', display: 'grid', gridTemplateColumns: '350px 1fr', gap: 20, alignItems: 'start' }}>
+      <div className="page-pad two-pane">
         <div style={{ background: c.white, borderRadius: 10, overflow: 'hidden' }}>
           {messages.map((m, i) => {
             const isUnread = m.status === 'new';

@@ -41,7 +41,9 @@ export const pill = (on: boolean): React.CSSProperties => ({
   border: '0.7px solid ' + c.border, background: on ? c.ink : 'transparent', color: on ? c.white : c.ink
 });
 
-export const h1: React.CSSProperties = { margin: 0, fontFamily: display, fontSize: 38, fontWeight: 400, lineHeight: '110%' };
+// No fontSize: it is set by `.page-title` in globals.css so it can shrink on
+// narrow screens. An inline value here would win over the media query.
+export const h1: React.CSSProperties = { margin: 0, fontFamily: display, fontWeight: 400, lineHeight: '110%' };
 export const h2: React.CSSProperties = { margin: 0, fontFamily: display, fontSize: 22, fontWeight: 500 };
 
 export const statusChip = (status: string): React.CSSProperties => ({

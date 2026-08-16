@@ -108,7 +108,7 @@ export default function EmailConsole({
     return (
       <>
         <PageHeader title="Email" subtitle="Not set up yet" />
-        <div style={{ padding: '32px 40px' }}>
+        <div className="page-pad">
           <div style={{ ...card, maxWidth: 640, fontSize: 15, lineHeight: 1.7, fontWeight: 300, color: c.muted }}>
             <h2 style={{ margin: '0 0 12px', fontFamily: display, fontSize: 22, fontWeight: 500, color: c.ink }}>
               {configured ? 'The emails table does not exist yet' : 'Resend is not configured'}
@@ -135,7 +135,7 @@ export default function EmailConsole({
         subtitle={unread ? unread + ' unread across ' + threads.length + ' conversations' : threads.length + ' conversations'}
       />
 
-      <div style={{ padding: '24px 40px 0', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="filter-bar" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         {['All', ...mailboxes].map(m => (
           <button key={m} type="button" onClick={() => { setMailbox(m); setOpenId(null); }} style={pill(mailbox === m)}>
             {m === 'All' ? 'All mailboxes' : m}
@@ -150,7 +150,7 @@ export default function EmailConsole({
         </button>
       </div>
 
-      <div style={{ padding: '20px 40px 40px', display: 'grid', gridTemplateColumns: '360px 1fr', gap: 20, alignItems: 'start' }}>
+      <div className="page-pad-tight two-pane-wide">
         <div style={{ background: c.white, borderRadius: 10, overflow: 'hidden' }}>
           {visible.length === 0 ? (
             <div style={{ padding: 24, fontSize: 15, color: c.muted, fontWeight: 300 }}>
@@ -264,7 +264,7 @@ export default function EmailConsole({
       {composing ? (
         <>
           <div onClick={() => setComposing(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(16,24,42,0.4)', zIndex: 44 }} />
-          <aside style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 560, maxWidth: '94vw', background: c.white, zIndex: 45, overflowY: 'auto', padding: 32, boxShadow: '-18px 0 50px rgba(16,24,42,0.22)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <aside className="drawer" style={{ position: 'fixed', top: 0, right: 0, bottom: 0, background: c.white, zIndex: 45, overflowY: 'auto', padding: 32, boxShadow: '-18px 0 50px rgba(16,24,42,0.22)', display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ margin: 0, fontFamily: display, fontSize: 24, fontWeight: 500 }}>New message</h2>
               <button type="button" onClick={() => setComposing(false)} style={{ background: c.bg, border: 0, width: 34, height: 34, borderRadius: '50%', fontSize: 16, cursor: 'pointer' }}>×</button>

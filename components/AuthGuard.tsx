@@ -25,7 +25,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!session) {
     return (
-      <div style={{ padding: 60, maxWidth: 520 }}>
+      <div className="page-pad" style={{ maxWidth: 520 }}>
         <h1 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 32, fontWeight: 500, margin: 0 }}>
           {adminsProvisioned ? 'Not on the allowlist' : 'Allowlist not set up'}
         </h1>

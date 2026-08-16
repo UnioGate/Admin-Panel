@@ -41,6 +41,7 @@ next request.
     lib/format.ts               Date/subject helpers — run server-side so hydration matches
     lib/store.tsx               Client state: session notes, admins, toasts
     lib/theme.ts                Design tokens shared with the marketing site
+    app/globals.css             Base styles + every responsive rule — see Layout
     sql/admins.sql              Migration for the allowlist — run this first, it seeds the Owner
     sql/emails.sql              Migration for the mail store — run by hand, see Email
     proxy.ts                    Cookie gate on /admin (was middleware.ts before Next 16)
@@ -48,6 +49,34 @@ next request.
 Pages are server components: they call `lib/queries.ts` directly and hand rows to a client
 child. Writes go through the route handlers, which re-check `requireAdmin()`, then
 `router.refresh()` re-runs the server component.
+
+## Layout
+
+Components are styled with inline `style={{}}`, which cannot express a media query — and
+which beats any stylesheet rule. So responsiveness lives in `app/globals.css` as a small set
+of named classes, and a property only reflows if it has been **removed from the inline style
+and moved into the class**. Leave a `gridTemplateColumns` or a `fontSize` inline and the
+media query below it is dead code.
+
+Breakpoints are the marketing site's (Tailwind's defaults): **1024px** and **768px**. They are
+`max-width` queries, because the desktop layout is the base and mobile is the override.
+
+    .shell / .sidebar / .topbar   Sidebar is a grid column above 1024px, an off-canvas
+                                  drawer below it, opened from the topbar hamburger
+    .page-pad / .page-header      40px side padding → 16px
+    .page-title / .login-title    38px → 28px, 64px → 38px
+    .stat-grid                    4 → 2 → 1 column (the last at 520px)
+    .split-main / .two-pane       Two panes → stacked; the list pane gets a capped
+    .two-pane-wide                height so it does not bury the item you opened
+    .settings-grid / .admin-row   Four-column rows fold to two lines
+    .activity-row                 Grid areas, so the timestamp moves without the DOM
+                                  order changing
+    .drawer / .drawer-narrow      Fixed widths → full-bleed
+    .scroll-x / .stack-sm         Wide content scrolls in its own box; toolbars stack
+    .hide-sm                      Drops the decorative date from the page header
+
+Wide tables keep `overflow-x: auto` on their wrapper: they scroll sideways inside the card
+rather than making the page do it.
 
 ## Data
 

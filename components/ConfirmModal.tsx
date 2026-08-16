@@ -14,7 +14,7 @@ export default function ConfirmModal({
 }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(16,24,42,0.55)', zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: c.white, borderRadius: 10, padding: 36, width: '100%', maxWidth: 460, boxShadow: '0 24px 60px rgba(16,24,42,0.28)' }}>
+      <div className="modal-card" style={{ background: c.white, borderRadius: 10, width: '100%', maxWidth: 460, boxShadow: '0 24px 60px rgba(16,24,42,0.28)' }}>
         <h2 style={{ margin: 0, fontFamily: display, fontSize: 28, fontWeight: 500, lineHeight: '120%' }}>{title}</h2>
         <p style={{ margin: '12px 0 28px', fontSize: 16, lineHeight: 1.65, color: c.muted, fontWeight: 300 }}>{body}</p>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>

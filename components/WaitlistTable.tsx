@@ -97,7 +97,7 @@ export default function WaitlistTable({ entries }: { entries: WaitlistEntry[] })
         subtitle={entries.length + ' signup' + (entries.length === 1 ? '' : 's') + ' · ' + mailable.length + ' mailable'}
       />
 
-      <div style={{ padding: '32px 40px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div className="page-pad" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <input
             value={q}

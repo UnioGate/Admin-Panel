@@ -38,7 +38,7 @@ export default function SettingsPage() {
     <>
       <PageHeader title="Settings" subtitle="Access control and Privy configuration" />
 
-      <div style={{ padding: '32px 40px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start', maxWidth: 1100 }}>
+      <div className="page-pad settings-grid" style={{ maxWidth: 1100 }}>
         <section style={card}>
           <h2 style={{ margin: '0 0 4px', fontFamily: display, fontSize: 22, fontWeight: 500 }}>Admin allowlist</h2>
           <p style={{ margin: '0 0 16px', fontSize: 15, color: c.muted, fontWeight: 300 }}>
@@ -58,7 +58,7 @@ export default function SettingsPage() {
                 // demoted or removed, or the console becomes unadministrable.
                 const lastOwner = a.role === 'Owner' && owners <= 1;
                 return (
-                  <div key={a.email} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', alignItems: 'center', gap: 10, padding: '14px 0', borderTop: '0.5px solid ' + c.line, fontSize: 15 }}>
+                  <div key={a.email} className="admin-row" style={{ padding: '14px 0', borderTop: '0.5px solid ' + c.line, fontSize: 15 }}>
                     {isOwner ? (
                       <input
                         value={draft[a.email] ?? a.name}
@@ -109,7 +109,7 @@ export default function SettingsPage() {
 
               {isOwner ? (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: 10, marginTop: 20 }}>
+                  <div className="admin-row" style={{ marginTop: 20 }}>
                     <input value={name} onChange={e => setName(e.target.value)} placeholder="Display name" style={{ ...input, width: '100%' }} />
                     <input value={email} onChange={e => setEmail(e.target.value)} placeholder="name@uniogate.com" style={{ ...input, width: '100%' }} />
                     <select value={role} onChange={e => setRole(e.target.value as AdminRole)} style={{ ...input, padding: '13px 10px', fontSize: 14 }}>
