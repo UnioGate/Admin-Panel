@@ -15,7 +15,8 @@ hot-reloaded. An unset allowlist admits nobody rather than falling back to a def
 
 ## Structure
 
-    app/login/page.tsx          Privy sign-in screen
+    app/login/page.tsx          Sign-in screen — our own UI on Privy's headless hooks
+    app/providers.tsx           PrivyProvider config (the modal is unused)
     app/admin/layout.tsx        Sidebar shell + allowlist guard + providers
     app/admin/page.tsx          Overview (stats, 14-day chart, activity)
     app/admin/waitlist/page.tsx Sortable, paginated, selectable table + record drawer
