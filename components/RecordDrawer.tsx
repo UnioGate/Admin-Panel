@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { WAITLIST, type WaitlistEntry } from '@/lib/data';
 import { useAdmin } from '@/lib/store';
 import { btnPrimary, btnSecondary, c, display, input, statusChip } from '@/lib/theme';
@@ -13,9 +13,8 @@ export default function RecordDrawer({
   onInvite: (email: string) => void;
 }) {
   const { notes, saveNote, hidden, hide, restore } = useAdmin();
+  // The caller keys this drawer on record.email, so a remount reseeds the draft.
   const [draft, setDraft] = useState(notes[record.email] ?? '');
-
-  useEffect(() => { setDraft(notes[record.email] ?? ''); }, [record.email, notes]);
 
   const isHidden = !!hidden[record.email];
   const events = [

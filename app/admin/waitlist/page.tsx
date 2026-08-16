@@ -205,6 +205,7 @@ export default function WaitlistPage() {
 
       {record ? (
         <RecordDrawer
+          key={record.email}
           record={record}
           onClose={() => setDetail(null)}
           onInvite={email => { setDetail(null); setInvite([email]); }}
