@@ -1,20 +1,19 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { ADMIN_ALLOWLIST } from './allowlist';
-import { BASE_ACTIVITY, type Admin, type ActivityEntry } from './data';
+import type { Admin } from './data';
 
 type Ctx = {
-  hidden: Record<string, boolean>;
-  hide: (emails: string[]) => void;
-  restore: (email: string) => void;
+  hide: (emails: string[]) => Promise<void>;
+  restore: (email: string) => Promise<void>;
   notes: Record<string, string>;
   saveNote: (email: string, note: string) => void;
   admins: Admin[];
   addAdmin: (name: string, email: string) => void;
   renameAdmin: (index: number, name: string) => void;
-  activity: ActivityEntry[];
-  note: (text: string, kind: string) => void;
+  note: (action: string, kind: string, target?: string) => void;
   toast: string;
   flash: (msg: string) => void;
 };
@@ -22,10 +21,9 @@ type Ctx = {
 const AdminCtx = createContext<Ctx | null>(null);
 
 export function AdminProvider({ children }: { children: React.ReactNode }) {
-  const [hidden, setHidden] = useState<Record<string, boolean>>({});
+  const router = useRouter();
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [admins, setAdmins] = useState<Admin[]>(ADMIN_ALLOWLIST);
-  const [log, setLog] = useState<ActivityEntry[]>([]);
   const [toast, setToast] = useState('');
 
   const flash = useCallback((msg: string) => {
@@ -33,37 +31,48 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     window.setTimeout(() => setToast(t => (t === msg ? '' : t)), 3600);
   }, []);
 
-  const note = useCallback((text: string, kind: string) => {
-    const stamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setLog(l => [{ text, kind, when: 'Today ' + stamp }, ...l]);
+  // Fire-and-forget audit row. The server decides whether it can be stored;
+  // a failed log must not block the action that produced it.
+  const note = useCallback((action: string, kind: string, target?: string) => {
+    void fetch('/api/activity', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action, kind, target: target ?? null })
+    }).catch(() => {});
   }, []);
 
-  const hide = useCallback((emails: string[]) => {
-    // TODO: POST /api/waitlist/hide — soft delete, sets hidden_at server-side.
-    setHidden(h => {
-      const next = { ...h };
-      emails.forEach(e => { next[e] = true; });
-      return next;
+  const setHidden = useCallback(async (emails: string[], hide: boolean) => {
+    const res = await fetch('/api/waitlist', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ emails, action: hide ? 'hide' : 'restore' })
     });
-    note(emails.length === 1
-      ? 'Waitlist record for ' + emails[0] + ' hidden on erasure request'
-      : emails.length + ' waitlist records hidden on erasure request', 'Privacy');
+    if (!res.ok) {
+      const { error } = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
+      flash(error ?? 'Could not update the record.');
+      return;
+    }
+    router.refresh();
+  }, [flash, router]);
+
+  const hide = useCallback(async (emails: string[]) => {
+    await setHidden(emails, true);
     flash(emails.length === 1
       ? 'Record hidden. Retained 30 days, then anonymised.'
       : emails.length + ' records hidden. Retained 30 days, then anonymised.');
-  }, [flash, note]);
+  }, [flash, setHidden]);
 
-  const restore = useCallback((email: string) => {
-    setHidden(h => { const next = { ...h }; delete next[email]; return next; });
-    note('Restored waitlist record for ' + email, 'Privacy');
+  const restore = useCallback(async (email: string) => {
+    await setHidden([email], false);
     flash('Record restored to the console.');
-  }, [flash, note]);
+  }, [flash, setHidden]);
 
+  // Session-only: `waitlist` has no notes column, so there is nowhere to put
+  // this yet. Say so rather than implying it was saved.
   const saveNote = useCallback((email: string, value: string) => {
     setNotes(n => ({ ...n, [email]: value }));
-    note('Note saved on ' + email, 'Waitlist');
-    flash('Note saved to the record.');
-  }, [flash, note]);
+    flash('Note kept for this session only — the waitlist table has no notes column.');
+  }, [flash]);
 
   // TODO: persist to the allowlist table once it exists. Until then this is
   // session-only — the server check in lib/auth.ts reads ADMIN_ALLOWLIST, so a
@@ -74,7 +83,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setAdmins(a => (
       a.some(x => x.email === normalised) ? a : [...a, { name: display, email: normalised, role: 'Admin' }]
     ));
-    note(display + ' (' + normalised + ') staged for the admin allowlist', 'Access');
+    note('Staged admin for the allowlist', 'Access', normalised);
     flash('Staged for this session. Add ' + normalised + ' to ADMIN_ALLOWLIST to make it stick.');
   }, [flash, note]);
 
@@ -83,9 +92,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<Ctx>(() => ({
-    hidden, hide, restore, notes, saveNote, admins, addAdmin, renameAdmin,
-    activity: [...log, ...BASE_ACTIVITY], note, toast, flash
-  }), [hidden, hide, restore, notes, saveNote, admins, addAdmin, renameAdmin, log, note, toast, flash]);
+    hide, restore, notes, saveNote, admins, addAdmin, renameAdmin, note, toast, flash
+  }), [hide, restore, notes, saveNote, admins, addAdmin, renameAdmin, note, toast, flash]);
 
   return <AdminCtx.Provider value={value}>{children}</AdminCtx.Provider>;
 }

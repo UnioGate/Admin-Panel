@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
-import { MESSAGES } from '@/lib/data';
 import { useAdmin } from '@/lib/store';
 import { c, display } from '@/lib/theme';
 import ConfirmModal from './ConfirmModal';
@@ -18,7 +17,7 @@ const NAV = [
   { href: '/admin/settings', label: 'Settings' }
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ unread }: { unread: number }) {
   const pathname = usePathname();
   const { user, logout } = usePrivy();
   const { admins } = useAdmin();
@@ -27,7 +26,6 @@ export default function Sidebar() {
 
   const email = user?.email?.address ?? '';
   const me = admins.find(a => a.email.toLowerCase() === email.toLowerCase());
-  const unread = MESSAGES.filter(m => m.unread).length;
 
   return (
     <aside style={{ background: c.ink, color: c.white, display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh' }}>

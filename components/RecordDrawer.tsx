@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { WAITLIST, type WaitlistEntry } from '@/lib/data';
+import type { WaitlistEntry } from '@/lib/data';
+import { shortDate } from '@/lib/format';
 import { useAdmin } from '@/lib/store';
-import { btnPrimary, btnSecondary, c, display, input, statusChip } from '@/lib/theme';
+import { btnPrimary, btnSecondary, c, display, input } from '@/lib/theme';
 
 export default function RecordDrawer({
   record, onClose, onInvite
@@ -12,24 +13,11 @@ export default function RecordDrawer({
   onClose: () => void;
   onInvite: (email: string) => void;
 }) {
-  const { notes, saveNote, hidden, hide, restore } = useAdmin();
+  const { notes, saveNote, hide, restore } = useAdmin();
   // The caller keys this drawer on record.email, so a remount reseeds the draft.
   const [draft, setDraft] = useState(notes[record.email] ?? '');
 
-  const isHidden = !!hidden[record.email];
-  const events = [
-    { label: 'Joined the waitlist', when: record.joined, strong: true },
-    { label: 'Confirmation email delivered', when: record.joined, strong: false },
-    record.status === 'Pending'
-      ? { label: 'Awaiting confirmation', when: 'pending', strong: false }
-      : { label: 'Confirmation email opened', when: record.joined, strong: false },
-    ...(record.status === 'Invited'
-      ? [
-          { label: 'Launch invite sent', when: 'Aug 10', strong: true },
-          { label: record.referrals > 10 ? 'Invite opened' : 'Invite not opened yet', when: record.referrals > 10 ? 'Aug 10' : '—', strong: false }
-        ]
-      : [])
-  ];
+  const isHidden = record.hiddenAt !== null;
 
   return (
     <>
@@ -43,39 +31,17 @@ export default function RecordDrawer({
           <button type="button" onClick={onClose} style={{ background: c.bg, border: 0, width: 34, height: 34, borderRadius: '50%', fontSize: 16, cursor: 'pointer', flex: 'none' }}>×</button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-          {[
-            ['Position', '#' + record.pos],
-            ['Referrals', String(record.referrals)],
-            ['Moved', record.referrals ? '+' + record.referrals * 3 : '—']
-          ].map(([k, v]) => (
-            <div key={k} style={{ background: c.bg, borderRadius: 10, padding: 14 }}>
-              <div style={{ fontSize: 12, color: c.soft }}>{k}</div>
-              <div style={{ fontFamily: display, fontSize: 24, fontWeight: 500 }}>{v}</div>
-            </div>
-          ))}
-        </div>
-
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 15 }}>
-          <Row label="Status"><span style={statusChip(record.status)}>{record.status}</span></Row>
-          <Row label="Joined">{record.joined}</Row>
-          <Row label="Source">{record.source}</Row>
-          <Row label="Wallet">{record.wallet}</Row>
-          <Row label="Referred by">
-            {record.source === 'Referral' ? WAITLIST[(record.pos * 3) % WAITLIST.length].email : '—'}
-          </Row>
+          <Row label="Position">#{record.pos}</Row>
+          <Row label="Joined">{shortDate(record.createdAt)}</Row>
+          <Row label="Mailing list">{record.unsubscribed ? 'Unsubscribed' : 'Subscribed'}</Row>
+          <Row label="Hidden">{isHidden ? shortDate(record.hiddenAt as string) : 'No'}</Row>
         </div>
 
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 10 }}>Email events</div>
-          {events.map((e, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '8px 1fr auto', alignItems: 'center', gap: 12, padding: '11px 0', borderBottom: '0.5px solid ' + c.line }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: e.strong ? c.blue : c.bar }} />
-              <span style={{ fontSize: 15, fontWeight: 300 }}>{e.label}</span>
-              <span style={{ fontSize: 13, color: c.soft, whiteSpace: 'nowrap' }}>{e.when}</span>
-            </div>
-          ))}
-        </div>
+        <p style={{ margin: 0, fontSize: 13, color: c.soft, lineHeight: 1.6, fontWeight: 300 }}>
+          This is everything the waitlist table stores. Source, wallet and referral data would have to be
+          captured by the signup form on the marketing site first.
+        </p>
 
         <div>
           <div style={{ fontSize: 14, fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 10 }}>Internal note</div>
@@ -93,7 +59,7 @@ export default function RecordDrawer({
           <button type="button" onClick={() => onInvite(record.email)} style={{ ...btnPrimary, padding: '12px 24px' }}>Send invite</button>
           <button
             type="button"
-            onClick={() => { if (isHidden) restore(record.email); else hide([record.email]); onClose(); }}
+            onClick={() => { if (isHidden) void restore(record.email); else void hide([record.email]); onClose(); }}
             style={{ background: c.white, color: c.ink, border: '0.7px solid ' + c.border, padding: '12px 24px', borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
           >
             {isHidden ? 'Restore record' : 'Hide record'}
