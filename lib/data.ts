@@ -29,6 +29,15 @@ export function isMessageStatus(value: unknown): value is MessageStatus {
   return MESSAGE_STATUSES.includes(value as MessageStatus);
 }
 
+/**
+ * No longer waiting on us. Drives both the `handled_at` stamp and the inbox
+ * ordering, so the two cannot disagree about what "dealt with" means. An
+ * unrecognised status counts as outstanding — better to surface it than bury it.
+ */
+export function isSettled(status: string): boolean {
+  return status === 'replied' || status === 'spam';
+}
+
 export type Message = {
   id: string;
   createdAt: string;

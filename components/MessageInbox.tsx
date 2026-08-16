@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import PageHeader from '@/components/PageHeader';
-import { MESSAGE_STATUSES, MESSAGE_STATUS_LABELS, type Message, type MessageStatus } from '@/lib/data';
+import { MESSAGE_STATUSES, MESSAGE_STATUS_LABELS, isSettled, type Message, type MessageStatus } from '@/lib/data';
 import { relative, subjectOf } from '@/lib/format';
 import { useAdmin } from '@/lib/store';
 import { btnSecondary, c, card, display } from '@/lib/theme';
@@ -71,7 +71,7 @@ export default function MessageInbox({ messages, canDelete }: { messages: Messag
     );
   }
 
-  const done = open.status === 'replied' || open.status === 'spam';
+  const done = isSettled(open.status);
 
   return (
     <>
@@ -79,25 +79,38 @@ export default function MessageInbox({ messages, canDelete }: { messages: Messag
 
       <div style={{ padding: '32px 40px', display: 'grid', gridTemplateColumns: '350px 1fr', gap: 20, alignItems: 'start' }}>
         <div style={{ background: c.white, borderRadius: 10, overflow: 'hidden' }}>
-          {messages.map(m => {
+          {messages.map((m, i) => {
             const isUnread = m.status === 'new';
+            const settled = isSettled(m.status);
             const on = m.id === open.id;
+            // fetchMessages() sinks settled enquiries, so this fires exactly
+            // once, at the boundary between the two groups.
+            const startsSettled = settled && !isSettled(messages[i - 1]?.status ?? 'new');
             return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => { setOpenId(m.id); setConfirmDelete(false); }}
-                style={{ display: 'block', width: '100%', textAlign: 'left', background: on ? '#F4F6FA' : c.white, border: 0, borderTop: '0.5px solid ' + c.line, borderLeft: '3px solid ' + (on ? c.blue : isUnread ? c.bar : 'transparent'), padding: '18px 20px', cursor: 'pointer' }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
-                  <span style={{ fontSize: 15, fontWeight: isUnread ? 600 : 400 }}>{m.name}</span>
-                  <span style={{ fontSize: 12, color: c.soft, whiteSpace: 'nowrap' }}>{relative(m.createdAt)}</span>
-                </div>
-                <div style={{ fontSize: 14, color: c.blue, marginTop: 5 }}>{subjectOf(m.topic, m.message)}</div>
-                <div style={{ fontSize: 13, color: c.soft, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 300 }}>
-                  {m.message.replace(/\n+/g, ' ').slice(0, 60)}…
-                </div>
-              </button>
+              <div key={m.id}>
+                {startsSettled ? (
+                  <div style={{ padding: '14px 20px 8px', fontSize: 12, letterSpacing: '0.06em', textTransform: 'uppercase', color: c.soft, borderTop: '0.5px solid ' + c.line, background: c.bg }}>
+                    Dealt with
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => { setOpenId(m.id); setConfirmDelete(false); }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', background: on ? '#F4F6FA' : c.white, border: 0, borderTop: '0.5px solid ' + c.line, borderLeft: '3px solid ' + (on ? c.blue : isUnread ? c.bar : 'transparent'), padding: '18px 20px', cursor: 'pointer', opacity: settled && !on ? 0.6 : 1 }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
+                    <span style={{ fontSize: 15, fontWeight: isUnread ? 600 : 400 }}>{m.name}</span>
+                    <span style={{ fontSize: 12, color: c.soft, whiteSpace: 'nowrap' }}>{relative(m.createdAt)}</span>
+                  </div>
+                  <div style={{ fontSize: 14, color: c.blue, marginTop: 5 }}>{subjectOf(m.topic, m.message)}</div>
+                  <div style={{ fontSize: 13, color: c.soft, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 300 }}>
+                    {m.message.replace(/\n+/g, ' ').slice(0, 60)}…
+                  </div>
+                  {settled ? (
+                    <div style={{ fontSize: 12, color: c.soft, marginTop: 6 }}>{labelFor(m.status)}</div>
+                  ) : null}
+                </button>
+              </div>
             );
           })}
         </div>

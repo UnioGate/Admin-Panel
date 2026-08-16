@@ -1,5 +1,6 @@
 import { relative } from './format';
 import { supabase } from './supabase';
+import { isSettled } from './data';
 import type { ActivityEntry, Message, MessageStatus, WaitlistEntry } from './data';
 
 // Postgres "relation does not exist" / PostgREST "table not in schema cache".
@@ -59,19 +60,30 @@ export async function fetchMessages(): Promise<Message[]> {
 
   if (error) throw new Error('contact_messages: ' + error.message);
 
-  return (data as MessageRow[]).map(r => ({
-    id: r.id,
-    createdAt: r.created_at,
-    name: r.name,
-    email: r.email,
-    message: r.message,
-    topic: r.topic,
-    business: r.business,
-    volume: r.volume,
-    status: r.status,
-    handledAt: r.handled_at,
-    notes: r.notes
-  }));
+  return (data as MessageRow[])
+    .map(r => ({
+      id: r.id,
+      createdAt: r.created_at,
+      name: r.name,
+      email: r.email,
+      message: r.message,
+      topic: r.topic,
+      business: r.business,
+      volume: r.volume,
+      status: r.status,
+      handledAt: r.handled_at,
+      notes: r.notes
+    }))
+    // Anything still needing a reply floats to the top; dealt-with enquiries
+    // sink. Sorted here rather than in the query because the grouping follows
+    // `status` — which is what the inbox displays — and not `handled_at`, which
+    // a write from outside the console could leave unset.
+    .sort((a, b) => {
+      const rank = (m: Message) => (isSettled(m.status) ? 1 : 0);
+      // The DB already ordered by created_at descending, so a stable sort keeps
+      // newest-first inside each group.
+      return rank(a) - rank(b);
+    });
 }
 
 export async function setMessageStatus(id: string, status: MessageStatus): Promise<void> {
