@@ -94,4 +94,26 @@ export function canUseMailbox(box: Mailbox, viewer: { email: string; role: Admin
   return box.assignedTo === null || box.assignedTo === viewer.email;
 }
 
+/**
+ * Whether a viewer may read mail that came through an address, given the
+ * mailboxes that currently exist. This is the read side of `canUseMailbox` and
+ * it governs the message list, the unread badge and attachment downloads.
+ *
+ * An address with no mailbox row is Owner-only, and that covers two cases that
+ * both want the same answer: catch-all mail delivered to an address nobody
+ * configured, and mail belonging to a mailbox that has since been deleted. In
+ * neither case is there anyone left to say who it was for, so it goes to the
+ * people who administer the domain rather than to everyone.
+ */
+export function canReadMailboxAddress(
+  address: string | null,
+  mailboxes: Mailbox[],
+  viewer: { email: string; role: AdminRole }
+): boolean {
+  if (viewer.role === 'Owner') return true;
+  if (!address) return false;
+  const box = mailboxes.find(m => m.address === address);
+  return box ? canUseMailbox(box, viewer) : false;
+}
+
 export type ActivityEntry = { text: string; when: string; kind: string };

@@ -187,15 +187,28 @@ which is what `support@`, `hello@` and `partners@` are) or **assigned to one adm
 then the only person other than an Owner who can touch it. An Owner sees everything; that is
 what administering the domain means.
 
-Assignment decides three separate things, and all three are settled on the server:
+Assignment decides who can **read** an address's mail as well as who can send as it. Both are
+settled on the server, at every point mail or the mailbox list can leave it:
 
-    /admin/email          Which addresses appear at all, and which are offered as a `From`
-    /api/email/send       Whether this session may send as the `from` it posted
-    /api/mailboxes GET    Which rows the browser is even told about
+    /admin/email                Which threads are rendered, and which addresses are offered as a `From`
+    /api/email GET              The same list, scoped the same way
+    /api/email PATCH            Whether this session may mark that thread read
+    /api/email/attachment       Whether the attachment belongs to a message they can read
+    /api/email/send             Whether this session may send as the `from` it posted
+    /api/mailboxes GET          Which rows the browser is even told about
+    Sidebar unread badge        Counted over readable mailboxes only
 
-The last one matters. Filtering in the browser would have shipped the full list of who holds
-which address to everyone, so the scoping happens in the route handler and in the server
-components, never in the client.
+Reads go through `fetchThreads(viewer)` in `lib/email-queries.ts`, which takes the viewer as a
+required argument precisely so a new caller cannot quietly get the unscoped list. The predicate
+itself is `canReadMailboxAddress` in `lib/data.ts`, the read-side twin of `canUseMailbox`.
+
+Filtering in the browser would not have been enough for any of these — the mail and the full
+list of who holds which address would still have been sent to the page.
+
+Mail through an address with no mailbox row is **Owner-only**. That covers catch-all mail to an
+address nobody configured and mail left behind by a deleted mailbox; in neither case is there
+anyone left to say who it was for, so it goes to the people who administer the domain rather
+than to everybody.
 
 **Suspending** a mailbox stops it sending and keeps everything else: it still receives, its old
 mail is still readable, and it still appears in the mailbox filter. **Deleting** removes the

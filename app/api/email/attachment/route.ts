@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
+import { readableMessageByResendId } from '@/lib/email-queries';
 import { resend, resendConfigured } from '@/lib/resend';
 
 /**
  * Resend hands out short-lived signed download URLs. Proxying them keeps those
  * URLs off the page — a signed link in the HTML would still work after the
  * admin signed out, and would be shareable by anyone who saw it.
+ *
+ * Both ids are checked against our own table first. Handing them straight to
+ * Resend would have served an attachment from any message on the account —
+ * another admin's mailbox, or mail that never went through this console.
  */
 export async function GET(req: Request) {
   const session = await requireAdmin();
@@ -20,6 +25,13 @@ export async function GET(req: Request) {
   const attachmentId = url.searchParams.get('id');
   if (!emailId || !attachmentId) {
     return NextResponse.json({ error: 'email and id are required' }, { status: 400 });
+  }
+
+  const message = await readableMessageByResendId(emailId, session);
+  // One message for both misses. Distinguishing "not yours" from "no such
+  // message" would confirm which ids exist.
+  if (!message || !message.attachments.some(a => a.id === attachmentId)) {
+    return NextResponse.json({ error: 'Attachment not found' }, { status: 404 });
   }
 
   const { data, error } = await resend.emails.receiving.attachments.get({ emailId, id: attachmentId });

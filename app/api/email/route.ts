@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { deleteThread, fetchThreads, markThreadRead, markThreadUnread } from '@/lib/email-queries';
+import {
+  canReadThread,
+  deleteThread,
+  fetchThreads,
+  markThreadRead,
+  markThreadUnread
+} from '@/lib/email-queries';
 import { recordActivity } from '@/lib/queries';
 
 export async function GET() {
@@ -8,7 +14,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    return NextResponse.json(await fetchThreads());
+    return NextResponse.json(await fetchThreads(session));
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 502 });
   }
@@ -22,6 +28,13 @@ export async function PATCH(req: Request) {
   if (!threadId) return NextResponse.json({ error: 'threadId required' }, { status: 400 });
   if (typeof read !== 'boolean') {
     return NextResponse.json({ error: 'read must be a boolean' }, { status: 400 });
+  }
+
+  // The thread id comes from the browser, so it need not be one this admin was
+  // shown. Read state is a small thing to change on someone else's mail, but it
+  // also confirms the thread exists, which is a leak on its own.
+  if (!(await canReadThread(threadId, session))) {
+    return NextResponse.json({ error: 'That conversation is not in your mailboxes.' }, { status: 403 });
   }
 
   try {

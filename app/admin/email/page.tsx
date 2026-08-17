@@ -9,13 +9,14 @@ export default async function EmailPage() {
   const session = await requireAdmin();
   if (!session) return null;
 
+  // `fetchThreads` is scoped to the viewer's mailboxes, so the page never holds
+  // mail that belongs to someone else — filtering in the browser would still
+  // have shipped it. The mailbox list is scoped here for the same reason.
   const [{ threads, provisioned }, { mailboxes, provisioned: mailboxesProvisioned }] = await Promise.all([
-    fetchThreads(),
+    fetchThreads(session),
     listMailboxes()
   ]);
 
-  // Scoped here, on the server, rather than in the console: filtering in the
-  // browser would still have shipped the full list of who owns what.
   const mine = mailboxes.filter(m => canUseMailbox(m, session));
 
   return (

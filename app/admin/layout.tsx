@@ -4,7 +4,7 @@ import Toast from '@/components/Toast';
 import { listAdmins } from '@/lib/admins';
 import { requireAdmin } from '@/lib/auth';
 import { canUseMailbox } from '@/lib/data';
-import { unreadEmailCount } from '@/lib/email-queries';
+import { unreadEmailCount, type Viewer } from '@/lib/email-queries';
 import { listMailboxes } from '@/lib/mailboxes';
 import { fetchMessages } from '@/lib/queries';
 import { AdminProvider } from '@/lib/store';
@@ -19,9 +19,9 @@ async function unreadCount() {
   }
 }
 
-async function unreadEmail() {
+async function unreadEmail(viewer: Viewer) {
   try {
-    return await unreadEmailCount();
+    return await unreadEmailCount(viewer);
   } catch {
     return 0;
   }
@@ -55,7 +55,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     allowlist(),
     domainMailboxes()
   ]);
-  const [unread, emails] = session ? await Promise.all([unreadCount(), unreadEmail()]) : [0, 0];
+  const [unread, emails] = session
+    ? await Promise.all([unreadCount(), unreadEmail(session)])
+    : [0, 0];
 
   return (
     <AdminProvider

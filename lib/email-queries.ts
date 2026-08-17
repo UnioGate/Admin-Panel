@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { supabase } from './supabase';
-import { ourAddresses } from './mailboxes';
+import { listMailboxes, ourAddresses } from './mailboxes';
+import { canReadMailboxAddress, canUseMailbox, type AdminRole } from './data';
 import {
   addressOf,
   baseAddress,
@@ -61,19 +62,39 @@ function toMessage(r: EmailRow): EmailMessage {
 export type ThreadsResult = { threads: EmailThread[]; provisioned: boolean };
 
 /**
+ * Who is asking. Every read in this file takes one: mail is scoped to the
+ * mailboxes the viewer holds, and making the argument required means a new
+ * caller cannot quietly get the unscoped list.
+ */
+export type Viewer = { email: string; role: AdminRole };
+
+/**
+ * The addresses a non-Owner may read, for use as a query filter. Null means the
+ * viewer is an Owner and no filter applies — distinct from an empty array,
+ * which means they hold nothing and every query should come back empty.
+ */
+async function readableAddresses(viewer: Viewer): Promise<string[] | null> {
+  if (viewer.role === 'Owner') return null;
+  const { mailboxes } = await listMailboxes();
+  return mailboxes.filter(m => canUseMailbox(m, viewer)).map(m => m.address);
+}
+
+/**
  * Threads are derived rather than stored. There is no `email_threads` table to
  * drift out of sync, at the cost of reading a window of messages and grouping
  * in memory — fine at this volume, and the limit keeps it bounded.
+ *
+ * Scoped to the viewer's mailboxes here rather than in the console: filtering
+ * in the browser would still have sent everyone else's mail to the page.
  */
-export async function fetchThreads(limit = 500): Promise<ThreadsResult> {
-  const [{ data, error }, ours] = await Promise.all([
+export async function fetchThreads(viewer: Viewer, limit = 500): Promise<ThreadsResult> {
+  const [{ data, error }, { mailboxes }] = await Promise.all([
     supabase
       .from('emails')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(limit),
-    // Needed to tell our own addresses from the people we are talking to.
-    ourAddresses()
+    listMailboxes()
   ]);
 
   if (error) {
@@ -81,10 +102,40 @@ export async function fetchThreads(limit = 500): Promise<ThreadsResult> {
     throw new Error('emails: ' + error.message);
   }
 
+  // Needed to tell our own addresses from the people we are talking to. Every
+  // mailbox counts, not just the viewer's: an address we own is ours whoever
+  // holds it, and treating one as a stranger would list it as a correspondent.
+  const ours = mailboxes.map(m => m.address);
+
+  const readable = (data as EmailRow[]).filter(r => canReadMailboxAddress(r.mailbox, mailboxes, viewer));
+
   return {
     provisioned: true,
-    threads: groupIntoThreads((data as EmailRow[]).map(toMessage), ours)
+    threads: groupIntoThreads(readable.map(toMessage), ours)
   };
+}
+
+/**
+ * Whether a viewer may open a thread. Checked before marking one read, which is
+ * a write against a thread id the browser supplies and so cannot be trusted to
+ * be one they were shown.
+ *
+ * A thread with a message in a mailbox they cannot read is refused whole. A
+ * conversation that crossed mailboxes is rare, and half of one is worse than
+ * none.
+ */
+export async function canReadThread(threadId: string, viewer: Viewer): Promise<boolean> {
+  if (viewer.role === 'Owner') return true;
+
+  const [{ data, error }, { mailboxes }] = await Promise.all([
+    supabase.from('emails').select('mailbox').eq('thread_id', threadId),
+    listMailboxes()
+  ]);
+
+  if (error) return false;
+  const rows = data as { mailbox: string | null }[];
+  if (rows.length === 0) return false;
+  return rows.every(r => canReadMailboxAddress(r.mailbox, mailboxes, viewer));
 }
 
 export async function markThreadRead(threadId: string): Promise<void> {
@@ -104,6 +155,30 @@ export async function markThreadUnread(threadId: string): Promise<void> {
     .eq('thread_id', threadId)
     .eq('direction', 'inbound');
   if (error) throw new Error('emails: ' + error.message);
+}
+
+/**
+ * The stored message behind an attachment download, or null if the viewer may
+ * not read it. Looked up by Resend's id, which is what the link carries.
+ *
+ * Without this the attachment route would fetch any id Resend would answer for,
+ * including mail belonging to a mailbox the viewer does not hold and mail that
+ * never went through this console at all.
+ */
+export async function readableMessageByResendId(
+  resendId: string,
+  viewer: Viewer
+): Promise<EmailMessage | null> {
+  const [{ data, error }, { mailboxes }] = await Promise.all([
+    supabase.from('emails').select('*').eq('resend_id', resendId).limit(1),
+    listMailboxes()
+  ]);
+
+  if (error) return null;
+  const row = (data as EmailRow[])[0];
+  if (!row) return null;
+  if (!canReadMailboxAddress(row.mailbox, mailboxes, viewer)) return null;
+  return toMessage(row);
 }
 
 /** Hard delete of a whole conversation. Owner only — the route enforces that. */
@@ -248,12 +323,26 @@ export async function insertOutbound(email: {
   if (error) throw new Error('emails: ' + error.message);
 }
 
-export async function unreadEmailCount(): Promise<number> {
-  const { count, error } = await supabase
+/**
+ * Drives the sidebar badge. Scoped like everything else — a count that included
+ * mail the viewer cannot open would send them looking for a message that is not
+ * in their list.
+ */
+export async function unreadEmailCount(viewer: Viewer): Promise<number> {
+  const addresses = await readableAddresses(viewer);
+  if (addresses !== null && addresses.length === 0) return 0;
+
+  let query = supabase
     .from('emails')
     .select('id', { count: 'exact', head: true })
     .eq('direction', 'inbound')
     .is('read_at', null);
+
+  // `in` also drops rows with a null mailbox, which is the answer we want:
+  // unattributed mail is Owner-only, and an Owner never reaches this branch.
+  if (addresses !== null) query = query.in('mailbox', addresses);
+
+  const { count, error } = await query;
   if (error) return 0;
   return count ?? 0;
 }
