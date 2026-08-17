@@ -223,41 +223,89 @@ table { border-collapse: collapse; }
   .activity-kind { justify-self: end; }
 }
 
-/* --- Email panes ---------------------------------------------------------
-   Two panes divided by a rule rather than by a gap: the divider is the layout,
-   and a gap would make the reading pane look like a card that had floated off
-   the list. Stacked below 1024px, where the list is capped and scrolls on its
-   own so it cannot push the message you opened off the screen. */
+/* --- Email toolbar -------------------------------------------------------
+   One row on desktop, with the actions pushed to the right end. On a phone
+   each control takes a full line and stretches: a folder tab you have to aim
+   for is the worst thing about reading mail on a small screen.
 
-.mail-panes { display: grid; grid-template-columns: 372px 1fr; align-items: stretch; }
-.mail-list { border-right: 0.5px solid #D5DAE5; min-width: 0; }
+   The stretching starts at 1024px, the same breakpoint the panes collapse at,
+   because that is where the bar begins to wrap — and a wrapped action group
+   still right-aligned against empty space reads as a mistake. */
+
+.mail-toolbar { padding: 14px 40px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mail-toolbar .seg-group { display: flex; }
+.mail-toolbar .tool-actions { display: flex; gap: 10px; margin-left: auto; }
 
 @media (max-width: 1023.98px) {
-  .mail-panes { grid-template-columns: 1fr; }
-  .mail-list {
-    border-right: 0;
-    border-bottom: 0.7px solid #D5DAE5;
-    max-height: 380px;
-    overflow-y: auto;
-  }
+  .mail-toolbar .seg-group { width: 100%; }
+  .mail-toolbar .seg-group > button { flex: 1; justify-content: center; padding-left: 8px; padding-right: 8px; }
+  .mail-toolbar .mb-select { flex: 1; width: auto; min-width: 0; }
+  .mail-toolbar .tool-actions { flex: 0 0 auto; margin-left: 0; }
 }
 
-/* The toolbars above the panes. Full-bleed, so their bottom rule meets the
-   pane divider rather than stopping short of it. */
-.mail-bar { padding: 18px 40px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+@media (max-width: 767.98px) {
+  .mail-toolbar { padding: 12px 16px; gap: 10px; }
+  .mail-toolbar .mb-select { width: 100%; flex: none; }
+  .mail-toolbar .tool-actions { width: 100%; }
+  .mail-toolbar .tool-actions > * { flex: 1; justify-content: center; }
+}
+
+/* --- Email panes ---------------------------------------------------------
+   Desktop: two columns of a fixed height, each scrolling on its own, so a long
+   conversation never pushes the list off the page and the list never pushes
+   the reply box out of reach. The divider is a rule rather than a gap — a gap
+   would make the reading pane look like a card that had floated off the list.
+
+   Below 1024px it becomes master-detail: one pane at a time, full width, with
+   a way back. Stacking them instead gives a list too short to scan above a
+   message too narrow to read. */
+
+.mail-app {
+  display: grid;
+  grid-template-columns: 366px minmax(0, 1fr);
+  /* The subtrahend is the page header plus the toolbar above this, rounded up:
+     the slack is what keeps a subtitle that wraps to a second line from pushing
+     the panes past the fold and giving the page a second scrollbar. */
+  height: min(760px, calc(100vh - 232px));
+  min-height: 540px;
+}
+
+.mail-col { min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.mail-col-list { border-right: 0.7px solid #D5DAE5; }
+/* overscroll-behavior: reaching the end of a pane must not start scrolling the
+   page behind it. */
+.mail-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+@media (max-width: 1023.98px) {
+  .mail-app { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; }
+  .mail-col { overflow: visible; }
+  .mail-col-list { border-right: 0; }
+  .mail-scroll { overflow: visible; }
+  .mail-app[data-view='list'] .mail-col-detail { display: none; }
+  .mail-app[data-view='detail'] .mail-col-list { display: none; }
+}
+
+/* Reading-pane gutters. */
+.mail-pad { padding: 22px 28px; }
 
 @media (max-width: 767.98px) {
-  .mail-bar { padding: 14px 16px; }
+  .mail-pad { padding: 16px; }
 }
 
 /* --- Email messages ------------------------------------------------------ */
 
 /* Sent mail is inset from the left, received from the right, so the two sides
    of a conversation form two columns you can follow without reading a word.
-   The inset is dropped below 768px, where there is no width to spare — the
-   tint and the Sent/Received label carry it on their own there. */
-.msg-in { margin-right: 56px; }
-.msg-out { margin-left: 56px; }
+   The inset halves once the reading pane goes full width and is dropped below
+   768px, where there is no width to spare — the tint and the Sent/Received
+   label carry it on their own there. */
+.msg-in { margin-right: 64px; }
+.msg-out { margin-left: 64px; }
+
+@media (max-width: 1023.98px) {
+  .msg-in { margin-right: 32px; }
+  .msg-out { margin-left: 32px; }
+}
 
 @media (max-width: 767.98px) {
   .msg-in, .msg-out { margin-left: 0; margin-right: 0; }
@@ -310,10 +358,14 @@ table { border-collapse: collapse; }
 
 /* --- Utilities ----------------------------------------------------------- */
 
-/* Wide content — tables, toolbars — scrolls in its own box so the page body
-   never scrolls sideways. */
-.scroll-x { overflow-x: auto; }
-
 @media (max-width: 767.98px) {
   .hide-sm { display: none !important; }
+}
+
+/* Shown only where the layout is a single column and a pane needs its own way
+   back. A two-pane desktop view never does — both panes are already on screen. */
+.only-sm { display: none !important; }
+
+@media (max-width: 1023.98px) {
+  .only-sm { display: inline-flex !important; }
 }

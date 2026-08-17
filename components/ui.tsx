@@ -57,6 +57,25 @@ export const Icon = {
     >
       <path d="M6 6l12 12M18 6 6 18" />
     </svg>
+  ),
+  back: (size = 14) => (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false"
+      style={{ flexShrink: 0 }}
+    >
+      <path d="M14 6l-6 6 6 6" />
+    </svg>
+  ),
+  reply: (size = 14) => (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false"
+      style={{ flexShrink: 0 }}
+    >
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h7a6 6 0 0 1 6 6v4" />
+    </svg>
   )
 };
 
