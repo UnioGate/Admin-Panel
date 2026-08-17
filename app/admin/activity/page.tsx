@@ -7,7 +7,7 @@ export default async function ActivityPage() {
   const session = await requireAdmin();
   if (!session) return null;
 
-  const { entries, provisioned } = await fetchActivity();
+  const { entries, provisioned } = await fetchActivity(session);
   const strong = (kind: string) => kind === 'Signup' || kind === 'Inbox';
 
   return (
@@ -19,8 +19,8 @@ export default async function ActivityPage() {
           <div style={{ ...card, padding: 28 }}>
             <div style={{ fontSize: 16, fontWeight: 500 }}>The audit table does not exist yet</div>
             <p style={{ margin: '8px 0 0', fontSize: 15, color: c.muted, fontWeight: 300, lineHeight: 1.6 }}>
-              Nothing is being recorded. Run the <code>admin_activity</code> migration from the README in the
-              Supabase SQL editor, and actions taken here will start appearing.
+              Nothing is being recorded. Run <code>sql/activity.sql</code> in the Supabase SQL editor,
+              and actions taken here will start appearing.
             </p>
           </div>
         ) : entries.length === 0 ? (
@@ -36,14 +36,20 @@ export default async function ActivityPage() {
               <div key={i} className="activity-row" style={{ padding: '16px 0', borderBottom: '0.5px solid ' + c.line }}>
                 <span className="activity-when" style={{ fontSize: 13, color: c.soft }}>{a.when}</span>
                 <span className="activity-dot" style={{ width: 8, height: 8, borderRadius: '50%', background: strong(a.kind) ? c.blue : c.bar }} />
-                <span className="activity-text" style={{ fontSize: 15, fontWeight: 300 }}>{a.text}</span>
+                <span className="activity-text" style={{ fontSize: 15, fontWeight: 300 }}>
+                  {a.text}
+                  {/* Who did it. Second line rather than inline: the action is
+                      what you scan for, the actor is what you check after. */}
+                  <span style={{ display: 'block', fontSize: 13, color: c.soft, marginTop: 3 }}>{a.actor}</span>
+                </span>
                 <span className="activity-kind" style={{ background: strong(a.kind) ? c.blueTint : c.bg, color: strong(a.kind) ? c.blue : c.muted, padding: '5px 14px', borderRadius: 20, fontSize: 13, whiteSpace: 'nowrap' }}>{a.kind}</span>
               </div>
             ))}
           </div>
         )}
         <p style={{ margin: '16px 0 0', fontSize: 14, color: c.muted, fontWeight: 300 }}>
-          Actions you take in this console are written to the audit table against your Privy DID.
+          Every action in this console is recorded against the admin who took it. Entries about a
+          mailbox you do not hold are not shown here — an Owner sees the whole log.
         </p>
       </div>
     </>

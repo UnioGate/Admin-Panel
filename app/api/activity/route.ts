@@ -9,7 +9,7 @@ export async function GET() {
   try {
     // `provisioned: false` means the admin_activity table has not been created
     // yet — the console says so rather than pretending the log is empty.
-    return NextResponse.json(await fetchActivity());
+    return NextResponse.json(await fetchActivity(session));
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 502 });
   }

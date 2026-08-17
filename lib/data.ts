@@ -116,4 +116,6 @@ export function canReadMailboxAddress(
   return box ? canUseMailbox(box, viewer) : false;
 }
 
-export type ActivityEntry = { text: string; when: string; kind: string };
+/** `actor` is a display name where the address resolves to an admin, and the
+    raw address where it does not — a removed admin, or a stranger who wrote in. */
+export type ActivityEntry = { actor: string; text: string; when: string; kind: string };

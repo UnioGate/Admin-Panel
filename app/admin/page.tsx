@@ -34,7 +34,7 @@ export default async function OverviewPage() {
   const [waitlist, messages, activity] = await Promise.all([
     fetchWaitlist(),
     fetchMessages(),
-    fetchActivity(7)
+    fetchActivity(session, 7)
   ]);
 
   const visible = waitlist.filter(e => e.hiddenAt === null);
@@ -72,7 +72,7 @@ export default async function OverviewPage() {
             <h2 style={{ margin: '0 0 8px', fontFamily: display, fontSize: 22, fontWeight: 500 }}>Recent activity</h2>
             {!activity.provisioned ? (
               <p style={{ margin: '10px 0 0', fontSize: 14, color: c.muted, fontWeight: 300, lineHeight: 1.6 }}>
-                No audit table yet — run the <code>admin_activity</code> migration from the README to start
+                No audit table yet — run <code>sql/activity.sql</code> in the Supabase SQL editor to start
                 recording what happens in the console.
               </p>
             ) : activity.entries.length === 0 ? (
@@ -84,7 +84,7 @@ export default async function OverviewPage() {
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: a.kind === 'Signup' || a.kind === 'Inbox' ? c.blue : c.bar, marginTop: 7 }} />
                     <div>
                       <div style={{ fontSize: 15, lineHeight: 1.45, fontWeight: 300 }}>{a.text}</div>
-                      <div style={{ fontSize: 13, color: c.soft, marginTop: 3 }}>{a.when}</div>
+                      <div style={{ fontSize: 13, color: c.soft, marginTop: 3 }}>{a.actor} · {a.when}</div>
                     </div>
                   </div>
                 ))}

@@ -259,7 +259,7 @@ export async function insertInbound(email: {
   inReplyTo: string | null;
   attachments: EmailAttachment[];
   createdAt: string;
-}): Promise<string> {
+}): Promise<{ threadId: string; mailbox: string | null }> {
   const recipients = [...email.to, ...email.cc, ...email.receivedFor];
   const threadId = await resolveThread({
     recipients,
@@ -269,11 +269,12 @@ export async function insertInbound(email: {
   });
 
   const { name, address } = parseAddress(email.from);
+  const mailbox = inboundMailbox(recipients, await ourAddresses());
 
   const { error } = await supabase.from('emails').insert({
     thread_id: threadId,
     direction: 'inbound',
-    mailbox: inboundMailbox(recipients, await ourAddresses()),
+    mailbox,
     from_address: address,
     from_name: name,
     to_addresses: email.to.map(baseAddress),
@@ -289,7 +290,9 @@ export async function insertInbound(email: {
   });
 
   if (error) throw new Error('emails: ' + error.message);
-  return threadId;
+  // The mailbox goes back to the caller so the activity entry can be scoped the
+  // same way the message is.
+  return { threadId, mailbox };
 }
 
 export async function insertOutbound(email: {

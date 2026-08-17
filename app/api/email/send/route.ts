@@ -103,7 +103,9 @@ export async function POST(req: Request) {
     actor: session.email,
     action: 'Sent email as ' + from,
     target: to.join(', '),
-    kind: 'Email'
+    kind: 'Email',
+    // Scopes the entry: the recipients are as private as the message.
+    mailbox: from
   });
 
   return NextResponse.json({ ok: true, threadId, id: data.id });

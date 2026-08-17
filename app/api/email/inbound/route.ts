@@ -65,8 +65,9 @@ export async function POST(req: Request) {
     inline: a.content_disposition === 'inline'
   }));
 
+  let stored: { threadId: string; mailbox: string | null };
   try {
-    await insertInbound({
+    stored = await insertInbound({
       resendId: emailId,
       from: data.from,
       to: data.to ?? [],
@@ -89,7 +90,10 @@ export async function POST(req: Request) {
     actor: data.from,
     action: 'Email received',
     target: data.subject || '(no subject)',
-    kind: 'Email'
+    kind: 'Email',
+    // The subject line is the message. Scoped to the address it arrived at, so
+    // it reaches the same admins the message itself does.
+    mailbox: stored.mailbox
   });
 
   return NextResponse.json({ ok: true });

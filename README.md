@@ -46,6 +46,7 @@ next request.
     sql/admins.sql              Migration for the allowlist — run this first, it seeds the Owner
     sql/emails.sql              Migration for the mail store — run by hand, see Email
     sql/mailboxes.sql           Migration for the addresses — run after admins.sql, see Mailboxes
+    sql/activity.sql            Migration for the audit log — adds `mailbox`, safe to re-run
     proxy.ts                    Cookie gate on /admin (was middleware.ts before Next 16)
 
 Pages are server components: they call `lib/queries.ts` directly and hand rows to a client
@@ -94,7 +95,7 @@ server-only and every caller sits behind `requireAdmin()`):
     waitlist          id, email, created_at, unsubscribed, hidden_at
     contact_messages  id, created_at, name, email, message, topic, business, volume,
                       status, handled_at, notes
-    admin_activity    id, created_at, actor, action, target, kind
+    admin_activity    id, created_at, actor, action, target, kind, mailbox
     emails            see sql/emails.sql — one row per message, inbound and outbound
 
 `contact_messages.status` is pinned by a check constraint
@@ -209,6 +210,15 @@ Mail through an address with no mailbox row is **Owner-only**. That covers catch
 address nobody configured and mail left behind by a deleted mailbox; in neither case is there
 anyone left to say who it was for, so it goes to the people who administer the domain rather
 than to everybody.
+
+The **activity log is scoped the same way**, because it quotes the same things: `Email received`
+carries the subject line and `Sent email as …` carries the recipients. Entries naming a mailbox
+you do not hold are filtered out of `/admin/activity` and the Overview panel. Everything else —
+access changes, signups, enquiries — stays visible to every admin, because that is console
+administration rather than private mail. `admin_activity.mailbox` is what carries the scope;
+rows written before that column existed fall back to parsing the address out of
+`Sent email as …`, and anything older than that stays visible, which is the exposure those rows
+already had.
 
 **Suspending** a mailbox stops it sending and keeps everything else: it still receives, its old
 mail is still readable, and it still appears in the mailbox filter. **Deleting** removes the

@@ -73,7 +73,9 @@ export async function POST(req: Request) {
     actor: gate.session.email,
     action: assignee.email ? 'Created mailbox for ' + assignee.email : 'Created shared mailbox',
     target: parsed.address,
-    kind: 'Email'
+    kind: 'Email',
+    // Who holds which address is Owner business, same as the mailbox list.
+    mailbox: parsed.address
   });
 
   return NextResponse.json({ ok: true, address: parsed.address, logged });
@@ -123,7 +125,13 @@ export async function PATCH(req: Request) {
       : null;
 
   const logged = action
-    ? await recordActivity({ actor: gate.session.email, action, target: target.address, kind: 'Email' })
+    ? await recordActivity({
+        actor: gate.session.email,
+        action,
+        target: target.address,
+        kind: 'Email',
+        mailbox: target.address
+      })
     : false;
 
   return NextResponse.json({ ok: true, logged });
@@ -143,7 +151,10 @@ export async function DELETE(req: Request) {
     actor: gate.session.email,
     action: 'Deleted mailbox',
     target: target.address,
-    kind: 'Email'
+    kind: 'Email',
+    // Recorded against an address that is about to stop existing. `mailbox` is
+    // plain text rather than a reference for exactly this reason.
+    mailbox: target.address
   });
 
   try {
