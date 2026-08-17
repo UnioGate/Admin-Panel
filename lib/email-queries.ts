@@ -199,17 +199,24 @@ export async function findResendId(resendId: string): Promise<boolean> {
  *
  *   1. the `+t…` token we put in Reply-To on our own outbound mail
  *   2. In-Reply-To matching a Message-ID we have stored
- *   3. same normalised subject with the same correspondent, within 30 days
+ *   3. same normalised subject with the same correspondent, in the same
+ *      mailbox, within 30 days
  *   4. a new thread
  *
  * Rule 3 is a heuristic and can be wrong — people reply to old mail by editing
- * the subject line — so it is deliberately last and time-boxed.
+ * the subject line — so it is deliberately last and time-boxed. It is also the
+ * only rule confined to one mailbox. Rules 1 and 2 match an identifier we
+ * issued or stored, so a genuine continuation can legitimately arrive at a
+ * different address; rule 3 matches on nothing stronger than a subject line and
+ * a correspondent, and "Test" from the same person is not evidence that mail to
+ * chidile@ belongs in a hello@ conversation.
  */
 async function resolveThread(input: {
   recipients: string[];
   inReplyTo: string | null;
   subject: string;
   fromAddress: string;
+  mailbox: string | null;
 }): Promise<string> {
   const tokenThread = threadFromRecipients(input.recipients);
   if (tokenThread) return tokenThread;
@@ -225,12 +232,15 @@ async function resolveThread(input: {
   }
 
   const subject = normaliseSubject(input.subject);
-  if (subject) {
+  // No mailbox means the catch-all took delivery for an address nobody holds.
+  // There is no conversation to guess at, so skip straight to a new thread.
+  if (subject && input.mailbox) {
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data } = await supabase
       .from('emails')
-      .select('thread_id, subject, from_address, to_addresses')
+      .select('thread_id, subject, from_address, to_addresses, mailbox')
       .gte('created_at', since)
+      .eq('mailbox', input.mailbox)
       .order('created_at', { ascending: false })
       .limit(200);
 
@@ -261,15 +271,20 @@ export async function insertInbound(email: {
   createdAt: string;
 }): Promise<{ threadId: string; mailbox: string | null }> {
   const recipients = [...email.to, ...email.cc, ...email.receivedFor];
+
+  // Which address it arrived at has to be settled before the thread, because
+  // the subject heuristic is scoped to it.
+  const mailbox = inboundMailbox(recipients, await ourAddresses());
+
   const threadId = await resolveThread({
     recipients,
     inReplyTo: email.inReplyTo,
     subject: email.subject,
-    fromAddress: email.from
+    fromAddress: email.from,
+    mailbox
   });
 
   const { name, address } = parseAddress(email.from);
-  const mailbox = inboundMailbox(recipients, await ourAddresses());
 
   const { error } = await supabase.from('emails').insert({
     thread_id: threadId,
