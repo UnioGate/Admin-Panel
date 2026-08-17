@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Icon, Tag, field, micro } from '@/components/ui';
 import { searchThreads, type EmailSearchHit, type EmailThread } from '@/lib/email';
 import { shortDate } from '@/lib/format';
-import { c, input as inputStyle } from '@/lib/theme';
+import { c, display } from '@/lib/theme';
 
 const FIELD_LABEL: Record<EmailSearchHit['field'], string> = {
   subject: 'Subject',
@@ -67,33 +68,40 @@ export default function EmailSearch({
         onKeyDown={onKeyDown}
         className="search-panel"
         style={{
-          position: 'fixed', zIndex: 61, background: c.white, borderRadius: 14,
+          // Square along the top edge it hangs from, rounded where it ends.
+          position: 'fixed', zIndex: 61, background: c.white, borderRadius: '0 0 14px 14px',
           boxShadow: '0 24px 70px rgba(16,24,42,0.3)', display: 'flex', flexDirection: 'column',
           overflow: 'hidden'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px', borderBottom: '0.5px solid ' + c.line }}>
-          <span aria-hidden style={{ fontSize: 17, color: c.soft }}>⌕</span>
-          <input
-            ref={box}
-            value={query}
-            onChange={e => {
-              setQuery(e.target.value);
-              // Back to the top with the term: the old cursor pointed into a
-              // different result list and would land on an unrelated thread.
-              setCursor(0);
-            }}
-            placeholder="Search subjects, message text, addresses, filenames…"
-            style={{ ...inputStyle, border: 0, padding: 0, flex: 1, fontSize: 17, minWidth: 0 }}
-          />
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close search"
-            style={{ background: c.bg, border: 0, width: 30, height: 30, borderRadius: '50%', fontSize: 15, cursor: 'pointer', flexShrink: 0 }}
-          >
-            ×
-          </button>
+        <div style={{ padding: '18px 22px 16px', borderBottom: '0.5px solid ' + c.faintBorder }}>
+          <div style={{ ...micro, color: c.blue, marginBottom: 10 }}>Search mail</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ color: c.soft, display: 'inline-flex' }}>{Icon.search(18)}</span>
+            <input
+              ref={box}
+              value={query}
+              onChange={e => {
+                setQuery(e.target.value);
+                // Back to the top with the term: the old cursor pointed into a
+                // different result list and would land on an unrelated thread.
+                setCursor(0);
+              }}
+              placeholder="Subject, message text, address or filename…"
+              style={{
+                ...field, border: 0, padding: 0, flex: 1, minWidth: 0,
+                fontSize: 22, fontFamily: display, fontWeight: 600, letterSpacing: '-0.01em'
+              }}
+            />
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close search"
+              style={{ background: 'transparent', border: '0.7px solid ' + c.faintBorder, width: 32, height: 32, borderRadius: '50%', cursor: 'pointer', color: c.muted, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              {Icon.close(14)}
+            </button>
+          </div>
         </div>
 
         <div ref={list} style={{ overflowY: 'auto', flex: 1 }}>
@@ -113,7 +121,7 @@ export default function EmailSearch({
           ))}
         </div>
 
-        <div style={{ padding: '10px 18px', borderTop: '0.5px solid ' + c.line, fontSize: 12, color: c.soft, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ ...micro, padding: '12px 22px', borderTop: '0.5px solid ' + c.faintBorder, background: c.bg, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <span>
             {query.trim()
               ? hits.length + ' match' + (hits.length === 1 ? '' : 'es') +
@@ -155,8 +163,8 @@ function Result({
       onClick={onPick}
       style={{
         display: 'block', width: '100%', textAlign: 'left', border: 0, cursor: 'pointer',
-        background: on ? '#F4F6FA' : c.white, borderTop: '0.5px solid ' + c.line,
-        borderLeft: '3px solid ' + (on ? c.blue : 'transparent'), padding: '13px 18px'
+        background: on ? '#F4F6FA' : c.white, borderBottom: '0.5px solid ' + c.line,
+        borderLeft: '3px solid ' + (on ? c.blue : 'transparent'), padding: '14px 22px'
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
@@ -173,15 +181,19 @@ function Result({
         <Highlight text={hit.snippet} at={hit.at} length={query.length} />
       </div>
 
-      <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 6, flexWrap: 'wrap', fontSize: 11, color: c.soft }}>
-        <span style={{ background: c.blueTint, color: c.blue, padding: '2px 8px', borderRadius: 20 }}>
-          {FIELD_LABEL[hit.field]}
-        </span>
-        {thread.mailbox ? <span style={{ background: c.bg, padding: '2px 8px', borderRadius: 20 }}>{thread.mailbox}</span> : null}
+      <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 7, flexWrap: 'wrap', fontSize: 11, color: c.soft }}>
+        {/* Which of the four fields matched, so a hit whose snippet is a line of
+            body text does not look like it came out of nowhere. */}
+        <Tag tone="tint">{FIELD_LABEL[hit.field]}</Tag>
+        {thread.mailbox ? <Tag>{thread.mailbox}</Tag> : null}
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {thread.correspondents[0] ?? 'Unknown sender'}
         </span>
-        {thread.attachmentCount > 0 ? <span aria-label="Has attachments">📎 {thread.attachmentCount}</span> : null}
+        {thread.attachmentCount > 0 ? (
+          <span aria-label="Has attachments" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {Icon.clip(12)} {thread.attachmentCount}
+          </span>
+        ) : null}
       </div>
     </button>
   );

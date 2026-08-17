@@ -14,6 +14,7 @@ export const c = {
   sidebarHover: '#1C2745',
   sidebarBorder: '#3A4468',
   sidebarMuted: '#8C9AC0',
+  danger: '#B3261E',
   white: '#fff'
 } as const;
 

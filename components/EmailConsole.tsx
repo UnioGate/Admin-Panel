@@ -4,13 +4,14 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import EmailSearch from '@/components/EmailSearch';
 import PageHeader from '@/components/PageHeader';
+import { Btn, Field, Icon, Tag, field, micro } from '@/components/ui';
 import {
   formatBytes, MAX_TOTAL_ATTACHMENT_BYTES, messageBody, quoteForReply, replySubject, threadInFolder,
   type EmailFolder, type EmailMessage, type EmailThread
 } from '@/lib/email';
 import { relative, shortDate } from '@/lib/format';
 import { useAdmin } from '@/lib/store';
-import { btnPrimary, btnSecondary, c, card, display, input, pill } from '@/lib/theme';
+import { c, display } from '@/lib/theme';
 
 type Draft = { from: string; to: string; cc: string; subject: string; text: string };
 
@@ -186,30 +187,32 @@ export default function EmailConsole({
     return (
       <>
         <PageHeader title="Email" subtitle="Not set up yet" />
-        <div className="page-pad">
-          <div style={{ ...card, maxWidth: 640, fontSize: 15, lineHeight: 1.7, fontWeight: 300, color: c.muted }}>
-            <h2 style={{ margin: '0 0 12px', fontFamily: display, fontSize: 22, fontWeight: 500, color: c.ink }}>
+        <div className="section-stack">
+          <div style={{ maxWidth: 680, background: c.white, border: '0.7px solid ' + c.faintBorder, borderRadius: 10, padding: '26px 28px 28px' }}>
+            <div style={{ ...micro, color: c.blue, marginBottom: 12 }}>Blocked</div>
+            <h2 style={{ margin: '0 0 16px', fontFamily: display, fontSize: 24, fontWeight: 600, letterSpacing: '-0.01em' }}>
               {!configured
                 ? 'Resend is not configured'
                 : !provisioned
                   ? 'The emails table does not exist yet'
                   : 'The mailboxes table does not exist yet'}
             </h2>
-            {!configured ? (
-              <p style={{ margin: 0 }}>
-                Set <code>RESEND_API_KEY</code> and <code>RESEND_WEBHOOK_SECRET</code> in
-                <code> .env.local</code> and restart the dev server. The README has the DNS and
-                webhook steps that go with them.
-              </p>
-            ) : !provisioned ? (
-              <p style={{ margin: 0 }}>Run <code>sql/emails.sql</code> in the Supabase SQL editor, then reload.</p>
-            ) : (
-              <p style={{ margin: 0 }}>
-                Run <code>sql/mailboxes.sql</code> in the Supabase SQL editor, then reload. It holds the
-                addresses this console can send and receive as — they used to live
-                in <code>EMAIL_MAILBOXES</code>.
-              </p>
-            )}
+            <div style={{ borderTop: '0.7px solid ' + c.faintBorder, margin: '0 0 18px' }} />
+            <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, fontWeight: 300, color: c.muted }}>
+              {!configured ? (
+                <>
+                  Set <code>RESEND_API_KEY</code> and <code>RESEND_WEBHOOK_SECRET</code> in <code>.env.local</code> and
+                  restart the dev server. The README has the DNS and webhook steps that go with them.
+                </>
+              ) : !provisioned ? (
+                <>Run <code>sql/emails.sql</code> in the Supabase SQL editor, then reload.</>
+              ) : (
+                <>
+                  Run <code>sql/mailboxes.sql</code> in the Supabase SQL editor, then reload. It holds the
+                  addresses this console can send and receive as — they used to live in <code>EMAIL_MAILBOXES</code>.
+                </>
+              )}
+            </p>
           </div>
         </div>
       </>
@@ -229,73 +232,90 @@ export default function EmailConsole({
         }
       />
 
-      <div className="filter-bar stack-sm">
-        {/* Folder first: which half of the conversation you are looking for is
-            a bigger question than which address it went through. */}
-        <div className="segmented" role="group" aria-label="Folder">
+      {/* Folder first: which half of the conversation you are looking for is a
+          bigger question than which address it went through. */}
+      <div className="mail-bar" style={{ background: c.white, borderBottom: '0.5px solid ' + c.faintBorder }}>
+        <div
+          role="group"
+          aria-label="Folder"
+          style={{ display: 'flex', border: '0.7px solid ' + c.blue, borderRadius: 24, overflow: 'hidden', background: c.white }}
+        >
           {([
             ['all', 'All', counts.all],
             ['inbox', 'Inbox', counts.inbox],
             ['sent', 'Sent', counts.sent]
-          ] as const).map(([key, label, n]) => (
-            <button
-              key={key}
-              type="button"
-              aria-pressed={folder === key}
-              onClick={() => { setFolder(key); setOpenId(null); }}
-              style={{
-                flex: 1, background: folder === key ? c.ink : 'transparent',
-                color: folder === key ? c.white : c.ink, border: 0, borderRadius: 20,
-                padding: '9px 18px', fontSize: 15, cursor: 'pointer', whiteSpace: 'nowrap'
-              }}
-            >
-              {label} <span style={{ opacity: 0.65, fontSize: 13 }}>{n}</span>
-            </button>
-          ))}
+          ] as const).map(([key, label, n], i) => {
+            const on = folder === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={on}
+                onClick={() => { setFolder(key); setOpenId(null); }}
+                style={{
+                  background: on ? c.blue : 'transparent', color: on ? c.white : c.blue,
+                  border: 0, borderLeft: i === 0 ? 0 : '1px solid ' + c.blue, borderRadius: 0,
+                  padding: '10px 20px', fontSize: 14, fontWeight: 500, cursor: 'pointer',
+                  display: 'flex', gap: 9, alignItems: 'baseline', whiteSpace: 'nowrap'
+                }}
+              >
+                {label}
+                <span style={{ fontSize: 11, letterSpacing: '0.08em', opacity: 0.7 }}>{n}</span>
+              </button>
+            );
+          })}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setSearching(true)}
-          style={{ ...btnSecondary, marginLeft: 'auto', padding: '11px 18px', fontSize: 15, display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}
-        >
-          <span aria-hidden>⌕</span> Search
-          <kbd style={{ fontSize: 11, fontWeight: 400, color: c.soft, background: c.bg, borderRadius: 5, padding: '2px 6px', fontFamily: 'inherit' }}>
+        <Btn kind="ghost" onClick={() => setSearching(true)} style={{ marginLeft: 'auto' }}>
+          {Icon.search(14)} Search
+          <kbd style={{ fontSize: 10, letterSpacing: '0.08em', fontWeight: 500, color: c.soft, background: c.bg, borderRadius: 5, padding: '3px 6px', fontFamily: 'inherit' }}>
             ⌘K
           </kbd>
-        </button>
+        </Btn>
 
-        <button
-          type="button"
+        <Btn
+          kind="primary"
           disabled={!canSend}
           onClick={() => setComposing(true)}
           title={canSend ? undefined : 'You have no mailbox that can send. An Owner assigns one in Settings.'}
-          style={{ ...btnPrimary, padding: '11px 22px', fontSize: 15, opacity: canSend ? 1 : 0.5 }}
+          style={{ opacity: canSend ? 1 : 0.5 }}
         >
           New message
-        </button>
+        </Btn>
       </div>
 
       {/* One mailbox means the pills would be a row of one — not worth the space. */}
       {readableMailboxes.length > 1 ? (
-        <div className="filter-bar scroll-x" style={{ flexWrap: 'nowrap', paddingTop: 12 }}>
-          {['All', ...readableMailboxes].map(m => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => { setMailbox(m); setOpenId(null); }}
-              style={{ ...pill(mailbox === m), whiteSpace: 'nowrap', flexShrink: 0 }}
-            >
-              {m === 'All' ? 'All mailboxes' : m}
-            </button>
-          ))}
+        <div
+          className="mail-bar scroll-x"
+          style={{ flexWrap: 'nowrap', background: c.white, borderBottom: '0.7px solid ' + c.faintBorder, paddingTop: 12, paddingBottom: 12, gap: 8 }}
+        >
+          <span style={{ ...micro, marginRight: 8, flexShrink: 0 }}>Mailbox</span>
+          {['All', ...readableMailboxes].map(m => {
+            const on = mailbox === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => { setMailbox(m); setOpenId(null); }}
+                style={{
+                  background: on ? c.ink : 'transparent', color: on ? c.white : c.muted,
+                  border: '1px solid ' + (on ? c.ink : c.faintBorder), borderRadius: 20,
+                  padding: '9px 16px', fontSize: 13, cursor: 'pointer',
+                  whiteSpace: 'nowrap', flexShrink: 0
+                }}
+              >
+                {m === 'All' ? 'All mailboxes' : m}
+              </button>
+            );
+          })}
         </div>
       ) : null}
 
-      <div className="page-pad-tight two-pane-wide">
-        <div style={{ background: c.white, borderRadius: 10, overflow: 'hidden' }}>
+      <div className="mail-panes">
+        <div className="mail-list" style={{ background: c.white }}>
           {visible.length === 0 ? (
-            <div style={{ padding: 24, fontSize: 15, color: c.muted, fontWeight: 300, lineHeight: 1.6 }}>
+            <div style={{ padding: '26px 22px', fontSize: 15, color: c.muted, fontWeight: 300, lineHeight: 1.65 }}>
               {folder === 'inbox'
                 ? 'Nothing has come in here yet.'
                 : folder === 'sent'
@@ -309,7 +329,13 @@ export default function EmailConsole({
                 key={t.id}
                 type="button"
                 onClick={() => { setOpenId(t.id); setConfirmDelete(false); setReply(''); if (t.unread) void setRead(t.id, true); }}
-                style={{ display: 'block', width: '100%', textAlign: 'left', background: on ? '#F4F6FA' : c.white, border: 0, borderTop: '0.5px solid ' + c.line, borderLeft: '3px solid ' + (on ? c.blue : t.unread ? c.bar : 'transparent'), padding: '16px 20px', cursor: 'pointer' }}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
+                  background: on ? '#F4F6FA' : c.white, border: 0, borderRadius: 0,
+                  borderBottom: '0.5px solid ' + c.line,
+                  borderLeft: '3px solid ' + (on ? c.blue : t.unread ? c.bar : 'transparent'),
+                  padding: '16px 18px'
+                }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
                   <span style={{ fontSize: 15, fontWeight: t.unread ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
@@ -323,45 +349,35 @@ export default function EmailConsole({
                     >
                       {t.lastDirection === 'inbound' ? '↓' : '↑'}
                     </span>
-                    <span style={{ color: c.soft, fontWeight: 400 }}>
-                      {t.lastDirection === 'inbound' ? 'From ' : 'To '}
-                    </span>
+                    <span style={{ ...micro, marginRight: 6 }}>{t.lastDirection === 'inbound' ? 'From' : 'To'}</span>
                     {t.correspondents[0] ?? 'Unknown sender'}
                   </span>
                   <span style={{ fontSize: 12, color: c.soft, whiteSpace: 'nowrap' }}>{relative(t.lastActivity)}</span>
                 </div>
-                <div style={{ fontSize: 14, color: c.blue, marginTop: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+
+                <div style={{ fontSize: 14, color: c.blue, marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {t.subject}
                 </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
-                  {t.mailbox ? (
-                    <span style={{ fontSize: 11, background: c.bg, color: c.muted, padding: '3px 9px', borderRadius: 20 }}>{t.mailbox}</span>
-                  ) : null}
+
+                <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 9, flexWrap: 'wrap' }}>
+                  {t.mailbox ? <Tag>{t.mailbox}</Tag> : null}
 
                   {/* Otherwise the only way to find out a conversation has a
                       file is to open it. */}
                   {t.attachmentCount > 0 ? (
                     <span
                       title={t.attachmentCount + ' attachment' + (t.attachmentCount === 1 ? '' : 's')}
-                      style={{ fontSize: 11, color: c.muted }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: c.muted }}
                     >
-                      📎 {t.attachmentCount}
+                      {Icon.clip(12)} {t.attachmentCount}
                     </span>
                   ) : null}
 
                   {/* The state of a conversation we started: still waiting, or
                       they came back. Without this, Sent is a list of things you
                       cannot tell apart. */}
-                  {t.hasOutbound && t.awaitingReply ? (
-                    <span style={{ fontSize: 11, background: c.bg, color: c.soft, padding: '3px 9px', borderRadius: 20 }}>
-                      Awaiting reply
-                    </span>
-                  ) : null}
-                  {t.weStarted && t.hasInbound ? (
-                    <span style={{ fontSize: 11, background: c.blueTint, color: c.blue, padding: '3px 9px', borderRadius: 20 }}>
-                      Replied
-                    </span>
-                  ) : null}
+                  {t.hasOutbound && t.awaitingReply ? <Tag tone="quiet">Awaiting reply</Tag> : null}
+                  {t.weStarted && t.hasInbound ? <Tag tone="tint">Replied</Tag> : null}
 
                   {t.messages.length > 1 ? (
                     <span style={{ fontSize: 11, color: c.soft }}>{t.messages.length} messages</span>
@@ -373,50 +389,53 @@ export default function EmailConsole({
         </div>
 
         {open ? (
-          <div style={{ ...card, padding: 0, display: 'flex', flexDirection: 'column', minHeight: 560 }}>
-            <div style={{ padding: '24px 28px', borderBottom: '0.5px solid ' + c.line, display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ background: c.white, display: 'flex', flexDirection: 'column', minHeight: 620, minWidth: 0 }}>
+            <div style={{ padding: '24px 28px 20px', borderBottom: '0.7px solid ' + c.faintBorder, display: 'flex', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
               <div style={{ minWidth: 0 }}>
-                <h2 style={{ margin: 0, fontFamily: display, fontSize: 24, fontWeight: 500, overflowWrap: 'anywhere' }}>{open.subject}</h2>
-                <div style={{ fontSize: 14, color: c.muted, marginTop: 6, overflowWrap: 'anywhere' }}>
+                <div style={{ ...micro, color: c.blue, marginBottom: 9 }}>Conversation</div>
+                <h2 style={{ margin: 0, fontFamily: display, fontSize: 26, fontWeight: 600, letterSpacing: '-0.01em', overflowWrap: 'anywhere' }}>
+                  {open.subject}
+                </h2>
+                <div style={{ fontSize: 14, color: c.muted, marginTop: 8, fontWeight: 300, overflowWrap: 'anywhere' }}>
                   {open.correspondents.join(', ') || 'No correspondents'}
                   {open.mailbox ? ' · via ' + open.mailbox : ''}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                <button type="button" disabled={busy} onClick={() => void setRead(open.id, false)} style={{ ...btnSecondary, padding: '9px 16px', fontSize: 14 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <Btn kind="ghost" disabled={busy} onClick={() => void setRead(open.id, false)} style={{ padding: '9px 16px', fontSize: 13 }}>
                   Mark unread
-                </button>
+                </Btn>
                 {canDelete ? (
                   confirmDelete ? (
                     <>
-                      <button type="button" disabled={busy} onClick={() => void removeThread(open.id)} style={{ ...btnSecondary, padding: '9px 16px', fontSize: 14, background: '#B3261E', color: c.white, borderColor: '#B3261E' }}>
+                      <Btn kind="dangerSolid" disabled={busy} onClick={() => void removeThread(open.id)} style={{ padding: '9px 16px', fontSize: 13 }}>
                         Delete for good
-                      </button>
-                      <button type="button" onClick={() => setConfirmDelete(false)} style={{ ...btnSecondary, padding: '9px 16px', fontSize: 14 }}>
+                      </Btn>
+                      <Btn kind="ghost" onClick={() => setConfirmDelete(false)} style={{ padding: '9px 16px', fontSize: 13 }}>
                         Cancel
-                      </button>
+                      </Btn>
                     </>
                   ) : (
-                    <button type="button" disabled={busy} onClick={() => setConfirmDelete(true)} style={{ ...btnSecondary, padding: '9px 16px', fontSize: 14, color: '#B3261E' }}>
+                    <Btn kind="danger" disabled={busy} onClick={() => setConfirmDelete(true)} style={{ padding: '9px 16px', fontSize: 13 }}>
                       Delete
-                    </button>
+                    </Btn>
                   )
                 ) : null}
               </div>
             </div>
 
-            <div style={{ padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 14, background: c.bg }}>
+            <div style={{ padding: '22px 28px', display: 'flex', flexDirection: 'column', gap: 16, background: c.bg }}>
               {open.messages.map(m => <MessageBlock key={m.id} message={m} />)}
             </div>
 
-            <div style={{ marginTop: 'auto', padding: '20px 28px 28px', borderTop: '0.5px solid ' + c.line }}>
-              <div style={{ fontSize: 13, color: c.soft, marginBottom: 8 }}>
+            <div style={{ marginTop: 'auto', padding: '22px 28px 28px', borderTop: '0.5px solid ' + c.faintBorder }}>
+              <div style={{ ...micro, marginBottom: 12 }}>
                 {/* No silent substitution. Replying from a different address
                     than the one they wrote to would look like a stranger
                     barging into the conversation. */}
                 {replyFrom
                   ? 'Replying as ' + replyFrom + ' to ' + (open.correspondents.join(', ') || '—')
-                  : (open.mailbox ?? 'This mailbox') + ' cannot send — it is suspended, or it is not one of yours.'}
+                  : (open.mailbox ?? 'This mailbox') + ' cannot send — it is suspended, or it is not one of yours'}
               </div>
               <textarea
                 rows={5}
@@ -424,34 +443,30 @@ export default function EmailConsole({
                 disabled={!replyFrom}
                 onChange={e => setReply(e.target.value)}
                 placeholder={replyFrom ? 'Write a reply…' : 'Replies are disabled for this mailbox.'}
-                style={{ ...input, width: '100%', resize: 'vertical', fontFamily: 'inherit', opacity: replyFrom ? 1 : 0.6 }}
+                style={{ ...field, resize: 'vertical', lineHeight: 1.6, opacity: replyFrom ? 1 : 0.6 }}
               />
 
-              <div style={{ marginTop: 10 }}>
+              <div style={{ marginTop: 12 }}>
                 <FilePicker id="reply-files" files={replyFiles} onChange={setReplyFiles} disabled={!replyFrom} />
               </div>
 
-              <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
+              <div style={{ display: 'flex', gap: 10, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Btn
+                  kind="primary"
                   disabled={busy || !replyFrom || (!reply.trim() && replyFiles.length === 0) || open.correspondents.length === 0}
                   onClick={() => void sendReply()}
-                  style={{ ...btnPrimary, padding: '11px 24px', fontSize: 15, opacity: busy || !replyFrom || (!reply.trim() && replyFiles.length === 0) ? 0.5 : 1 }}
+                  style={{ padding: '11px 24px', opacity: busy || !replyFrom || (!reply.trim() && replyFiles.length === 0) ? 0.5 : 1 }}
                 >
                   {busy ? 'Sending…' : 'Send reply'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setReply(r => r + quoteForReply(open.messages[open.messages.length - 1]))}
-                  style={{ ...btnSecondary, padding: '11px 20px', fontSize: 14 }}
-                >
+                </Btn>
+                <Btn onClick={() => setReply(r => r + quoteForReply(open.messages[open.messages.length - 1]))}>
                   Quote last message
-                </button>
+                </Btn>
               </div>
             </div>
           </div>
         ) : (
-          <div style={{ ...card, fontSize: 15, color: c.muted, fontWeight: 300 }}>
+          <div style={{ background: c.white, padding: 28, fontSize: 15, color: c.muted, fontWeight: 300 }}>
             Select a conversation, or start a new one.
           </div>
         )}
@@ -459,46 +474,65 @@ export default function EmailConsole({
 
       {composing ? (
         <>
-          <div onClick={() => setComposing(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(16,24,42,0.4)', zIndex: 44 }} />
-          <aside className="drawer" style={{ position: 'fixed', top: 0, right: 0, bottom: 0, background: c.white, zIndex: 45, overflowY: 'auto', padding: 32, boxShadow: '-18px 0 50px rgba(16,24,42,0.22)', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ margin: 0, fontFamily: display, fontSize: 24, fontWeight: 500 }}>New message</h2>
-              <button type="button" onClick={() => setComposing(false)} style={{ background: c.bg, border: 0, width: 34, height: 34, borderRadius: '50%', fontSize: 16, cursor: 'pointer' }}>×</button>
+          <div onClick={() => setComposing(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(16,24,42,0.45)', zIndex: 44 }} />
+          <aside
+            className="drawer"
+            style={{
+              position: 'fixed', top: 0, right: 0, bottom: 0, background: c.white, zIndex: 45,
+              overflowY: 'auto', padding: '28px 32px 36px', borderLeft: '0.7px solid ' + c.faintBorder,
+              boxShadow: '-18px 0 50px rgba(16,24,42,0.22)', display: 'flex', flexDirection: 'column', gap: 16
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+              <div>
+                <div style={{ ...micro, color: c.blue, marginBottom: 8 }}>Compose</div>
+                <h2 style={{ margin: 0, fontFamily: display, fontSize: 26, fontWeight: 600, letterSpacing: '-0.01em' }}>New message</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setComposing(false)}
+                aria-label="Close"
+                style={{ background: 'transparent', border: '0.7px solid ' + c.faintBorder, width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', color: c.muted, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                {Icon.close(14)}
+              </button>
             </div>
+            <div style={{ borderTop: '0.7px solid ' + c.faintBorder }} />
 
-            <label style={{ fontSize: 13, color: c.soft }}>From</label>
-            <select value={draft.from} onChange={e => setDraft({ ...draft, from: e.target.value })} style={{ ...input, width: '100%' }}>
-              {mailboxes.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
+            <Field label="From">
+              <select value={draft.from} onChange={e => setDraft({ ...draft, from: e.target.value })} style={{ ...field, padding: '11px 10px' }}>
+                {mailboxes.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </Field>
+            <Field label="To (comma separated)">
+              <input value={draft.to} onChange={e => setDraft({ ...draft, to: e.target.value })} style={field} />
+            </Field>
+            <Field label="Cc">
+              <input value={draft.cc} onChange={e => setDraft({ ...draft, cc: e.target.value })} style={field} />
+            </Field>
+            <Field label="Subject">
+              <input value={draft.subject} onChange={e => setDraft({ ...draft, subject: e.target.value })} style={field} />
+            </Field>
+            <Field label="Message">
+              <textarea
+                rows={12}
+                value={draft.text}
+                onChange={e => setDraft({ ...draft, text: e.target.value })}
+                style={{ ...field, resize: 'vertical', lineHeight: 1.6 }}
+              />
+            </Field>
+            <Field label="Attachments">
+              <FilePicker id="draft-files" files={draftFiles} onChange={setDraftFiles} />
+            </Field>
 
-            <label style={{ fontSize: 13, color: c.soft }}>To (comma separated)</label>
-            <input value={draft.to} onChange={e => setDraft({ ...draft, to: e.target.value })} style={{ ...input, width: '100%' }} />
-
-            <label style={{ fontSize: 13, color: c.soft }}>Cc</label>
-            <input value={draft.cc} onChange={e => setDraft({ ...draft, cc: e.target.value })} style={{ ...input, width: '100%' }} />
-
-            <label style={{ fontSize: 13, color: c.soft }}>Subject</label>
-            <input value={draft.subject} onChange={e => setDraft({ ...draft, subject: e.target.value })} style={{ ...input, width: '100%' }} />
-
-            <label style={{ fontSize: 13, color: c.soft }}>Message</label>
-            <textarea
-              rows={12}
-              value={draft.text}
-              onChange={e => setDraft({ ...draft, text: e.target.value })}
-              style={{ ...input, width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
-            />
-
-            <label style={{ fontSize: 13, color: c.soft }}>Attachments</label>
-            <FilePicker id="draft-files" files={draftFiles} onChange={setDraftFiles} />
-
-            <button
-              type="button"
+            <Btn
+              kind="primary"
               disabled={busy || !draft.to.trim() || (!draft.text.trim() && draftFiles.length === 0)}
               onClick={() => void sendNew()}
-              style={{ ...btnPrimary, marginTop: 6, opacity: busy || !draft.to.trim() || (!draft.text.trim() && draftFiles.length === 0) ? 0.5 : 1 }}
+              style={{ marginTop: 8, padding: '13px 26px', opacity: busy || !draft.to.trim() || (!draft.text.trim() && draftFiles.length === 0) ? 0.5 : 1 }}
             >
               {busy ? 'Sending…' : 'Send'}
-            </button>
+            </Btn>
           </aside>
         </>
       ) : null}
@@ -533,31 +567,23 @@ function MessageBlock({ message }: { message: EmailMessage }) {
         borderRadius: 12,
         padding: '16px 18px',
         background: outbound ? c.blueTint : c.white,
-        border: '0.5px solid ' + (outbound ? '#C3CFEC' : c.line),
+        border: '1px solid ' + (outbound ? '#C3CFEC' : c.faintBorder),
         borderLeft: '3px solid ' + (outbound ? c.blue : c.bar)
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 14, fontWeight: 500, color: outbound ? c.blue : c.ink, overflowWrap: 'anywhere' }}>
-          <span
-            style={{
-              fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 600,
-              background: outbound ? c.blue : c.bar, color: outbound ? c.white : c.ink,
-              padding: '3px 8px', borderRadius: 20, marginRight: 9, whiteSpace: 'nowrap'
-            }}
-          >
-            {outbound ? 'Sent' : 'Received'}
-          </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', fontSize: 14, fontWeight: 500, color: outbound ? c.blue : c.ink, overflowWrap: 'anywhere' }}>
+          <Tag tone={outbound ? 'accent' : 'neutral'}>{outbound ? 'Sent' : 'Received'}</Tag>
           {outbound ? 'You' : message.fromName ?? message.fromAddress}
           <span style={{ fontWeight: 300, color: c.soft }}>
-            {' · ' + message.fromAddress}
+            {message.fromAddress}
             {outbound && message.sentBy ? ' (' + message.sentBy + ')' : ''}
           </span>
         </span>
         <span style={{ fontSize: 12, color: c.soft, whiteSpace: 'nowrap' }}>{shortDate(message.createdAt)}</span>
       </div>
 
-      <p style={{ margin: '10px 0 0', fontSize: 15, lineHeight: 1.7, fontWeight: 300, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxWidth: '72ch' }}>
+      <p style={{ margin: '12px 0 0', fontSize: 15, lineHeight: 1.7, fontWeight: 300, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxWidth: '72ch' }}>
         {body}
       </p>
 
@@ -573,7 +599,7 @@ function MessageBlock({ message }: { message: EmailMessage }) {
                 borderRadius: 8, textDecoration: 'none', maxWidth: '100%'
               }}
             >
-              <span aria-hidden>📎</span>
+              {Icon.clip(13)}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {a.filename ?? 'attachment'}
               </span>
@@ -600,7 +626,7 @@ function FilePicker({
   const overSize = total > MAX_TOTAL_ATTACHMENT_BYTES;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <input
         id={id}
         ref={picker}
@@ -624,7 +650,8 @@ function FilePicker({
               key={f.name + i}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, background: c.bg,
-                padding: '7px 8px 7px 12px', borderRadius: 8, maxWidth: '100%'
+                border: '0.7px solid ' + c.faintBorder, borderRadius: 8,
+                padding: '7px 8px 7px 12px', maxWidth: '100%'
               }}
             >
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
@@ -633,9 +660,9 @@ function FilePicker({
                 type="button"
                 onClick={() => onChange(files.filter((_, j) => j !== i))}
                 aria-label={'Remove ' + f.name}
-                style={{ background: 'transparent', border: 0, cursor: 'pointer', fontSize: 15, color: c.soft, lineHeight: 1, padding: '0 2px' }}
+                style={{ background: 'transparent', border: 0, cursor: 'pointer', color: c.soft, lineHeight: 1, padding: '0 2px', display: 'inline-flex', alignItems: 'center' }}
               >
-                ×
+                {Icon.close(14)}
               </button>
             </span>
           ))}
@@ -643,16 +670,11 @@ function FilePicker({
       ) : null}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => picker.current?.click()}
-          style={{ ...btnSecondary, padding: '9px 16px', fontSize: 14, opacity: disabled ? 0.5 : 1 }}
-        >
-          📎 Attach files
-        </button>
+        <Btn kind="ghost" disabled={disabled} onClick={() => picker.current?.click()} style={{ padding: '9px 16px', fontSize: 13, opacity: disabled ? 0.5 : 1 }}>
+          {Icon.clip(14)} Attach files
+        </Btn>
         {files.length > 0 ? (
-          <span style={{ fontSize: 12, color: overSize ? '#B3261E' : c.soft }}>
+          <span style={{ fontSize: 12, color: overSize ? c.danger : c.soft }}>
             {files.length} file{files.length === 1 ? '' : 's'} · {formatBytes(total)}
             {overSize ? ' — over the ' + formatBytes(MAX_TOTAL_ATTACHMENT_BYTES) + ' limit' : ''}
           </span>

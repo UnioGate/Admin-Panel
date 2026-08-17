@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import MailboxSettings from '@/components/MailboxSettings';
 import PageHeader from '@/components/PageHeader';
+import { Btn, Field, Notice, Section, Tag, field, fieldSm, micro } from '@/components/ui';
 import { ADMIN_ROLES, type AdminRole } from '@/lib/data';
 import { useAdmin } from '@/lib/store';
-import { btnPrimary, c, card, display, input } from '@/lib/theme';
+import { c } from '@/lib/theme';
 
 export default function SettingsPage() {
   const {
@@ -42,22 +43,32 @@ export default function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" subtitle="Access control and Privy configuration" />
+      <PageHeader title="Settings" subtitle="Access control, mailboxes and Privy configuration" />
 
-      <div className="page-pad settings-grid" style={{ maxWidth: 1100 }}>
-        <section style={card}>
-          <h2 style={{ margin: '0 0 4px', fontFamily: display, fontSize: 22, fontWeight: 500 }}>Admin allowlist</h2>
-          <p style={{ margin: '0 0 16px', fontSize: 15, color: c.muted, fontWeight: 300 }}>
-            Stored in Supabase. Changes take effect on the next request — no redeploy.
-          </p>
-
+      <div className="section-stack">
+        <Section
+          n="01"
+          title="Admin allowlist"
+          note={
+            'Stored in Supabase. Changes take effect on the next request — no redeploy. Adding someone ' +
+            'lets them sign in with Privy immediately; suspending keeps their row and their name in the ' +
+            'activity log but stops the sign-in; removing also suspends and detaches any mailbox that was theirs.'
+          }
+        >
           {!adminsProvisioned ? (
-            <p style={{ margin: 0, fontSize: 15, color: c.muted, lineHeight: 1.6, fontWeight: 300 }}>
+            <Notice>
               The <code>admins</code> table does not exist yet. Run <code>sql/admins.sql</code> in the Supabase
               SQL editor to create it and seed the first Owner.
-            </p>
+            </Notice>
           ) : (
             <>
+              <div className="allowlist-row col-head" style={{ padding: '12px 0 10px', borderBottom: '0.5px solid ' + c.faintBorder }}>
+                <span style={micro}>Name</span>
+                <span style={micro}>Email</span>
+                <span style={micro}>Role</span>
+                <span style={{ ...micro, textAlign: 'right' }}>Actions</span>
+              </div>
+
               {admins.map(a => {
                 const isMe = a.email === session?.email;
                 const suspended = !!a.suspendedAt;
@@ -66,7 +77,11 @@ export default function SettingsPage() {
                 // unadministrable.
                 const lastOwner = a.role === 'Owner' && !suspended && owners <= 1;
                 return (
-                  <div key={a.email} className="admin-row" style={{ padding: '14px 0', borderTop: '0.5px solid ' + c.line, fontSize: 15, opacity: suspended ? 0.6 : 1 }}>
+                  <div
+                    key={a.email}
+                    className="allowlist-row"
+                    style={{ padding: '16px 0', borderBottom: '0.5px solid ' + c.line, fontSize: 15, opacity: suspended ? 0.55 : 1 }}
+                  >
                     {isOwner ? (
                       <input
                         value={draft[a.email] ?? a.name}
@@ -77,112 +92,136 @@ export default function SettingsPage() {
                           if (next && next !== a.name) void renameAdmin(a.email, next);
                         }}
                         placeholder="Display name"
-                        style={{ ...input, padding: '9px 12px', border: '0.7px solid ' + c.faintBorder, width: '100%' }}
+                        aria-label={'Display name for ' + a.email}
+                        style={{ ...field, padding: '9px 11px', border: '0.7px solid ' + c.faintBorder }}
                       />
                     ) : (
-                      <span>{a.name}</span>
+                      <span style={{ fontWeight: 500 }}>{a.name}</span>
                     )}
 
-                    <span style={{ color: c.muted, fontSize: 14, overflowWrap: 'anywhere' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', color: c.muted, fontSize: 14, overflowWrap: 'anywhere' }}>
                       {a.email}
-                      {suspended ? (
-                        <span style={{ marginLeft: 8, fontSize: 12, background: c.bg, color: c.soft, padding: '3px 9px', borderRadius: 20 }}>
-                          Suspended
-                        </span>
-                      ) : null}
+                      {isMe ? <Tag tone="quiet">You</Tag> : null}
+                      {suspended ? <Tag>Suspended</Tag> : null}
                     </span>
 
                     {isOwner && !lastOwner ? (
                       <select
                         value={a.role}
                         onChange={e => void setAdminRole(a.email, e.target.value as AdminRole)}
-                        style={{ ...input, padding: '8px 10px', border: '0.7px solid ' + c.faintBorder, fontSize: 13 }}
+                        aria-label={'Role for ' + a.email}
+                        style={fieldSm}
                       >
                         {ADMIN_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
                     ) : (
-                      <span style={{ background: c.bg, color: c.muted, padding: '5px 14px', borderRadius: 20, fontSize: 13, whiteSpace: 'nowrap' }}>{a.role}</span>
+                      <span><Tag tone={a.role === 'Owner' ? 'tint' : 'neutral'}>{a.role}</Tag></span>
                     )}
 
                     {/* Both actions share the last cell so the row stays four
                         columns wide — the mobile rule folds it by position. */}
                     {isOwner && !isMe && !lastOwner ? (
                       <span style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                        <button
-                          type="button"
-                          onClick={() => void suspendAdmin(a.email, !suspended)}
-                          style={{ background: 'transparent', border: '0.7px solid ' + c.faintBorder, color: c.soft, borderRadius: 20, padding: '6px 14px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                        >
+                        <Btn kind="ghost" onClick={() => void suspendAdmin(a.email, !suspended)} style={{ padding: '8px 14px', fontSize: 13 }}>
                           {suspended ? 'Restore' : 'Suspend'}
-                        </button>
-                        <button
-                          type="button"
+                        </Btn>
+                        <Btn
+                          kind={confirmRemove === a.email ? 'dangerSolid' : 'danger'}
                           onClick={() => {
                             if (confirmRemove !== a.email) { setConfirmRemove(a.email); return; }
                             setConfirmRemove('');
                             void removeAdmin(a.email);
                           }}
                           onBlur={() => setConfirmRemove('')}
-                          style={{ background: 'transparent', border: '0.7px solid ' + (confirmRemove === a.email ? '#B3261E' : c.faintBorder), color: confirmRemove === a.email ? '#B3261E' : c.soft, borderRadius: 20, padding: '6px 14px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                          style={{ padding: '8px 14px', fontSize: 13 }}
                         >
                           {confirmRemove === a.email ? 'Confirm' : 'Remove'}
-                        </button>
+                        </Btn>
                       </span>
-                    ) : <span />}
+                    ) : (
+                      // Says why the buttons are missing rather than leaving a
+                      // hole where everyone else's are.
+                      <span style={{ ...micro, textAlign: 'right' }}>{lastOwner ? 'Last owner' : ''}</span>
+                    )}
                   </div>
                 );
               })}
 
               {isOwner ? (
-                <>
-                  <div className="admin-row" style={{ marginTop: 20 }}>
-                    <input value={name} onChange={e => setName(e.target.value)} placeholder="Display name" style={{ ...input, width: '100%' }} />
-                    <input value={email} onChange={e => setEmail(e.target.value)} placeholder="name@uniogate.com" style={{ ...input, width: '100%' }} />
-                    <select value={role} onChange={e => setRole(e.target.value as AdminRole)} style={{ ...input, padding: '13px 10px', fontSize: 14 }}>
-                      {ADMIN_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
-                    <button type="button" onClick={submit} disabled={busy} style={{ ...btnPrimary, padding: '13px 24px', opacity: busy ? 0.6 : 1 }}>
-                      {busy ? 'Adding…' : 'Add'}
-                    </button>
+                <div style={{ marginTop: 26, background: c.bg, padding: '22px 22px 24px', borderRadius: 10, border: '0.7px solid ' + c.faintBorder }}>
+                  <div style={{ ...micro, color: c.blue, marginBottom: 16 }}>Add an admin</div>
+                  <div className="newadmin-row">
+                    <Field label="Display name">
+                      <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" style={field} />
+                    </Field>
+                    <Field label="Email">
+                      <input value={email} onChange={e => setEmail(e.target.value)} placeholder="name@uniogate.com" style={field} />
+                    </Field>
+                    <Field label="Role">
+                      <select value={role} onChange={e => setRole(e.target.value as AdminRole)} style={{ ...field, padding: '11px 10px', fontSize: 14 }}>
+                        {ADMIN_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </Field>
+                    <Btn kind="primary" onClick={submit} disabled={busy} style={{ padding: '11px 26px', opacity: busy ? 0.6 : 1 }}>
+                      {busy ? 'Adding…' : 'Add admin'}
+                    </Btn>
                   </div>
-                  <p style={{ margin: '14px 0 0', fontSize: 13, color: c.soft, fontWeight: 300, lineHeight: 1.6 }}>
-                    Adding someone lets them sign in with Privy immediately. Suspending keeps their row
-                    and their name in the activity log but stops the sign-in; removing also suspends
-                    and detaches any mailbox that was theirs. Only an Owner can change this list, and
-                    the last Owner cannot be removed, demoted or suspended.
+                  <p style={{ margin: '16px 0 0', fontSize: 13, lineHeight: 1.65, fontWeight: 300, color: c.soft }}>
+                    Only an Owner can change this list, and the last Owner cannot be removed, demoted or suspended.
                   </p>
-                </>
+                </div>
               ) : (
-                <p style={{ margin: '18px 0 0', fontSize: 13, color: c.soft, fontWeight: 300 }}>
+                <p style={{ margin: '18px 0 0', fontSize: 13, fontWeight: 300, color: c.soft }}>
                   Only an Owner can change this list.
                 </p>
               )}
             </>
           )}
-        </section>
+        </Section>
 
         <MailboxSettings />
 
-        <section style={{ ...card, background: c.ink, color: c.white }}>
-          <h2 style={{ margin: '0 0 4px', fontFamily: display, fontSize: 22, fontWeight: 500 }}>Privy configuration</h2>
-          <p style={{ margin: '0 0 20px', fontSize: 15, color: '#A9B3CC', fontWeight: 300 }}>Read from your Privy dashboard.</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: 15 }}>
-            {[
-              ['App ID', process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? 'not set'],
-              ['Login methods', 'Email OTP'],
-              ['Session length', '12 hours'],
-              ['Embedded wallets', 'Off']
-            ].map(([k, v]) => (
-              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                <span style={{ color: c.sidebarMuted }}>{k}</span>
-                <span style={{ overflowWrap: 'anywhere' }}>{v}</span>
-              </div>
-            ))}
-          </div>
-          <p style={{ margin: '22px 0 0', fontSize: 14, color: '#A9B3CC', lineHeight: 1.7, fontWeight: 300 }}>
-            Gate the console server-side too: verify the Privy access token in middleware and check the DID against the allowlist before any admin route renders.
-          </p>
-        </section>
+        <div className="settings-two">
+          <Section n="03" title="Privy configuration" note="Read from your Privy dashboard.">
+            <div style={{ background: c.ink, color: c.white, padding: '24px 26px 26px', borderRadius: 10, marginTop: 20 }}>
+              {[
+                ['App ID', process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? 'not set'],
+                ['Login methods', 'Email OTP'],
+                ['Session length', '12 hours'],
+                ['Embedded wallets', 'Off']
+              ].map(([k, v], i) => (
+                <div
+                  key={k}
+                  style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '13px 0', borderTop: i === 0 ? 0 : '1px solid ' + c.sidebarBorder, fontSize: 15 }}
+                >
+                  <span style={{ ...micro, color: c.sidebarMuted }}>{k}</span>
+                  <span style={{ overflowWrap: 'anywhere', textAlign: 'right', fontWeight: 300 }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          <Section n="04" title="Hardening" note="What this page does not do for you.">
+            <div style={{ padding: '22px 0 0', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {[
+                ['Verify server-side', 'Check the Privy access token in middleware and match the DID against the allowlist before any admin route renders.'],
+                ['Trust the API, not the UI', 'Every control here is also enforced in the route handlers — this page only decides what to draw.'],
+                ['Keep the last Owner', 'Demotion, suspension and removal of the final active Owner are refused in both places.']
+              ].map(([k, v], i) => (
+                <div
+                  key={k}
+                  style={{ display: 'grid', gridTemplateColumns: '28px 1fr', gap: 16, paddingTop: i === 0 ? 0 : 18, borderTop: i === 0 ? 0 : '1px solid ' + c.line }}
+                >
+                  <span style={{ ...micro, color: c.blue, fontWeight: 600 }}>{'0' + (i + 1)}</span>
+                  <span>
+                    <span style={{ display: 'block', fontSize: 15, fontWeight: 500 }}>{k}</span>
+                    <span style={{ display: 'block', marginTop: 5, fontSize: 14, lineHeight: 1.65, fontWeight: 300, color: c.muted }}>{v}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Section>
+        </div>
       </div>
     </>
   );
