@@ -169,7 +169,7 @@ export default function SettingsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: 15 }}>
             {[
               ['App ID', process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? 'not set'],
-              ['Login methods', 'Email OTP, Wallet'],
+              ['Login methods', 'Email OTP'],
               ['Session length', '12 hours'],
               ['Embedded wallets', 'Off']
             ].map(([k, v]) => (

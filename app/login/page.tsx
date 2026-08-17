@@ -2,35 +2,20 @@
 
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { useLoginWithEmail, useLoginWithSiwe, usePrivy } from '@privy-io/react-auth';
-import { btnPrimary, c, display, input as inputStyle, pill } from '@/lib/theme';
-
-// Minimal EIP-1193 surface — enough to request accounts and personal_sign.
-type Eip1193 = { request(args: { method: string; params?: unknown[] }): Promise<unknown> };
-
-function injectedWallet(): Eip1193 | undefined {
-  return (globalThis as { ethereum?: Eip1193 }).ethereum;
-}
-
-const noopSubscribe = () => () => {};
+import { useCallback, useEffect, useState } from 'react';
+import { useLoginWithEmail, usePrivy } from '@privy-io/react-auth';
+import { btnPrimary, c, display, input as inputStyle } from '@/lib/theme';
 
 export default function LoginPage() {
   const { authenticated, ready } = usePrivy();
   const router = useRouter();
 
-  const [method, setMethod] = useState<'email' | 'wallet'>('email');
   // Which half of the email flow to show. Privy's `state` reports progress but
   // never returns to `initial`, so "use a different email" needs its own flag.
   const [stage, setStage] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [walletBusy, setWalletBusy] = useState(false);
-
-  // Read on the client only, so the server render and the first client render
-  // agree: no wallet until we know otherwise.
-  const hasWallet = useSyncExternalStore(noopSubscribe, () => !!injectedWallet(), () => false);
 
   const onComplete = useCallback(() => router.replace('/admin'), [router]);
   const onError = useCallback((err: unknown) => {
@@ -38,7 +23,6 @@ export default function LoginPage() {
   }, []);
 
   const { sendCode, loginWithCode, state: emailState } = useLoginWithEmail({ onComplete, onError });
-  const { generateSiweMessage, loginWithSiwe, state: siweState } = useLoginWithSiwe({ onComplete, onError });
 
   useEffect(() => {
     if (ready && authenticated) router.replace('/admin');
@@ -47,8 +31,6 @@ export default function LoginPage() {
   const awaitingCode = stage === 'code';
   const sending = emailState.status === 'sending-code';
   const verifying = emailState.status === 'submitting-code';
-  const signing = walletBusy || siweState.status === 'generating-message'
-    || siweState.status === 'awaiting-signature' || siweState.status === 'submitting-signature';
 
   async function handleSendCode(e: React.FormEvent) {
     e.preventDefault();
@@ -75,31 +57,6 @@ export default function LoginPage() {
       await loginWithCode({ code });
     } catch (err) {
       onError(err);
-    }
-  }
-
-  async function handleWallet() {
-    setError(null);
-    const provider = injectedWallet();
-    if (!provider) {
-      setError('No browser wallet detected. Install MetaMask or sign in with email.');
-      return;
-    }
-    setWalletBusy(true);
-    try {
-      const accounts = (await provider.request({ method: 'eth_requestAccounts' })) as string[];
-      const address = accounts?.[0];
-      if (!address) throw new Error('Wallet returned no account.');
-      const message = await generateSiweMessage({ address, chainId: 'eip155:1' });
-      const signature = (await provider.request({
-        method: 'personal_sign',
-        params: [message, address]
-      })) as string;
-      await loginWithSiwe({ signature, message });
-    } catch (err) {
-      onError(err);
-    } finally {
-      setWalletBusy(false);
     }
   }
 
@@ -144,17 +101,10 @@ export default function LoginPage() {
         <div className="login-card" style={{ background: c.white, borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 18, boxShadow: '0 18px 50px rgba(16,24,42,0.10)' }}>
           <h2 style={{ margin: 0, fontFamily: display, fontSize: 30, fontWeight: 500 }}>Sign in</h2>
           <p style={{ margin: 0, fontSize: 16, color: c.muted, fontWeight: 300, lineHeight: 1.6 }}>
-            Authentication runs through Privy. Only emails and wallets on the admin allowlist can open the console.
+            Authentication runs through Privy. Only emails on the admin allowlist can open the console.
           </p>
 
           {!awaitingCode && (
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" onClick={() => { setMethod('email'); setError(null); }} style={pill(method === 'email')}>Email code</button>
-              <button type="button" onClick={() => { setMethod('wallet'); setError(null); }} style={pill(method === 'wallet')}>Wallet (EVM)</button>
-            </div>
-          )}
-
-          {method === 'email' && !awaitingCode && (
             <form onSubmit={handleSendCode} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <label htmlFor="admin-email" style={{ fontSize: 13, color: c.soft }}>Work email</label>
               <input
@@ -173,7 +123,7 @@ export default function LoginPage() {
             </form>
           )}
 
-          {method === 'email' && awaitingCode && (
+          {awaitingCode && (
             <form onSubmit={handleVerify} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <label htmlFor="admin-code" style={{ fontSize: 13, color: c.soft }}>
                 Six-digit code sent to {email}
@@ -200,22 +150,6 @@ export default function LoginPage() {
                 </button>
               </div>
             </form>
-          )}
-
-          {method === 'wallet' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <p style={{ margin: 0, fontSize: 14, color: c.soft, lineHeight: 1.6, fontWeight: 300 }}>
-                Connects your browser wallet and signs a Sign-In with Ethereum message. Nothing is sent on-chain and no fee is charged.
-              </p>
-              <button type="button" onClick={handleWallet} disabled={signing || !ready} style={{ ...btnPrimary, padding: '15px 24px', fontSize: 16, opacity: signing || !ready ? 0.6 : 1 }}>
-                {signing ? 'Waiting for your wallet…' : 'Connect wallet and sign'}
-              </button>
-              {!hasWallet && (
-                <p style={{ margin: 0, fontSize: 13, color: c.soft, fontWeight: 300 }}>
-                  No browser wallet detected in this browser.
-                </p>
-              )}
-            </div>
           )}
 
           {error && (

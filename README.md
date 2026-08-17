@@ -1,7 +1,7 @@
 # UnioGate Admin
 
 Next.js (App Router) console for the UnioGate waitlist and contact inbox. Auth is Privy; only
-allowlisted emails/wallets can open it.
+allowlisted emails can open it — email one-time codes, no wallet sign-in.
 
 ## Run
 
