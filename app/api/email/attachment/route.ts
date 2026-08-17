@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { downloadStoredAttachment } from '@/lib/attachments';
 import { requireAdmin } from '@/lib/auth';
 import { readableMessageByResendId } from '@/lib/email-queries';
 import { resend, resendConfigured } from '@/lib/resend';
@@ -16,10 +17,6 @@ export async function GET(req: Request) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!resendConfigured) {
-    return NextResponse.json({ error: 'RESEND_API_KEY is not set.' }, { status: 503 });
-  }
-
   const url = new URL(req.url);
   const emailId = url.searchParams.get('email');
   const attachmentId = url.searchParams.get('id');
@@ -28,30 +25,66 @@ export async function GET(req: Request) {
   }
 
   const message = await readableMessageByResendId(emailId, session);
+  const attachment = message?.attachments.find(a => a.id === attachmentId);
   // One message for both misses. Distinguishing "not yours" from "no such
   // message" would confirm which ids exist.
-  if (!message || !message.attachments.some(a => a.id === attachmentId)) {
+  if (!message || !attachment) {
     return NextResponse.json({ error: 'Attachment not found' }, { status: 404 });
   }
 
-  const { data, error } = await resend.emails.receiving.attachments.get({ emailId, id: attachmentId });
-  if (error || !data) {
-    return NextResponse.json({ error: error?.message ?? 'Attachment not found' }, { status: 502 });
+  // A file we sent lives in our own bucket; a file we received lives at Resend.
+  // Same URL either way, because the difference is not the reader's problem.
+  const source = attachment.path
+    ? await fromStorage(attachment.path)
+    : await fromResend(emailId, attachmentId);
+
+  if ('error' in source) {
+    return NextResponse.json({ error: source.error }, { status: source.status });
   }
 
-  const file = await fetch(data.download_url);
-  if (!file.ok || !file.body) {
-    return NextResponse.json({ error: 'Could not download the attachment.' }, { status: 502 });
-  }
-
-  return new NextResponse(file.body, {
+  return new NextResponse(source.body, {
     headers: {
-      'content-type': data.content_type,
+      'content-type': source.contentType,
       // Always an attachment: rendering an untrusted file inline would run it
       // on this origin, alongside the admin session.
       'content-disposition':
-        'attachment; filename="' + (data.filename ?? 'attachment').replace(/"/g, '') + '"',
+        'attachment; filename="' +
+        (attachment.filename ?? source.filename ?? 'attachment').replace(/["\r\n]/g, '') +
+        '"',
       'cache-control': 'private, no-store'
     }
   });
+}
+
+type Source =
+  | { body: ReadableStream<Uint8Array>; contentType: string; filename: string | null }
+  | { error: string; status: number };
+
+async function fromStorage(path: string): Promise<Source> {
+  const blob = await downloadStoredAttachment(path);
+  if (!blob) return { error: 'Could not read the stored attachment.', status: 502 };
+  return {
+    body: blob.stream() as ReadableStream<Uint8Array>,
+    contentType: blob.type || 'application/octet-stream',
+    filename: null
+  };
+}
+
+async function fromResend(emailId: string, attachmentId: string): Promise<Source> {
+  // Only inbound needs the key. A file we sent comes out of our own bucket, and
+  // refusing it because Resend is unconfigured would withhold something we hold.
+  if (!resendConfigured) return { error: 'RESEND_API_KEY is not set.', status: 503 };
+
+  const { data, error } = await resend.emails.receiving.attachments.get({ emailId, id: attachmentId });
+  if (error || !data) {
+    return { error: error?.message ?? 'Attachment not found', status: 502 };
+  }
+
+  // Resend hands out a short-lived signed URL rather than the bytes.
+  const file = await fetch(data.download_url);
+  if (!file.ok || !file.body) {
+    return { error: 'Could not download the attachment.', status: 502 };
+  }
+
+  return { body: file.body, contentType: data.content_type, filename: data.filename ?? null };
 }

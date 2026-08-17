@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { supabase } from './supabase';
+import { removeThreadAttachments } from './attachments';
 import { listMailboxes, ourAddresses } from './mailboxes';
 import { canReadMailboxAddress, canUseMailbox, type AdminRole } from './data';
 import {
@@ -181,10 +182,17 @@ export async function readableMessageByResendId(
   return toMessage(row);
 }
 
-/** Hard delete of a whole conversation. Owner only — the route enforces that. */
+/**
+ * Hard delete of a whole conversation. Owner only — the route enforces that.
+ *
+ * The stored attachments go with it. They are keyed by thread rather than by
+ * row, so they can be found without reading the rows first — and if they were
+ * left behind there would be nothing pointing at them to find them by later.
+ */
 export async function deleteThread(threadId: string): Promise<void> {
   const { error } = await supabase.from('emails').delete().eq('thread_id', threadId);
   if (error) throw new Error('emails: ' + error.message);
+  await removeThreadAttachments(threadId);
 }
 
 export async function findResendId(resendId: string): Promise<boolean> {
@@ -320,6 +328,7 @@ export async function insertOutbound(email: {
   html: string | null;
   resendId: string | null;
   sentBy: string;
+  attachments: EmailAttachment[];
 }): Promise<void> {
   const { error } = await supabase.from('emails').insert({
     thread_id: email.threadId,
@@ -334,6 +343,7 @@ export async function insertOutbound(email: {
     html: email.html,
     resend_id: email.resendId,
     sent_by: email.sentBy,
+    attachments: email.attachments,
     // Our own sends are never "unread" — read state only tracks inbound mail.
     read_at: new Date().toISOString()
   });

@@ -1,6 +1,12 @@
 import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
+import {
+  checkAttachmentSizes,
+  removeStoredAttachments,
+  storeOutboundAttachments,
+  type OutboundFile
+} from '@/lib/attachments';
 import { addressOf, replyToAddress } from '@/lib/email';
 import { insertOutbound } from '@/lib/email-queries';
 import { recordActivity } from '@/lib/queries';
@@ -18,15 +24,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'RESEND_API_KEY is not set — nothing was sent.' }, { status: 503 });
   }
 
-  const body = (await req.json()) as {
-    from?: string;
-    to?: unknown;
-    cc?: unknown;
-    subject?: string;
-    text?: string;
-    threadId?: string;
-    inReplyTo?: string | null;
-  };
+  let body: SendBody;
+  let files: OutboundFile[];
+  try {
+    ({ body, files } = await readRequest(req));
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 400 });
+  }
+
+  const sizeProblem = checkAttachmentSizes(files);
+  // Checked before anything is sent or stored: a message that goes out and then
+  // fails to record its files is worse than one that never left.
+  if (sizeProblem) return NextResponse.json({ error: sizeProblem }, { status: 413 });
 
   const from = (body.from ?? '').trim().toLowerCase();
   // Three separate questions, all answered server-side. The client picks a
@@ -53,11 +62,24 @@ export async function POST(req: Request) {
 
   const subject = (body.subject ?? '').trim();
   const text = (body.text ?? '').trim();
-  if (!text) return NextResponse.json({ error: 'The message body is empty.' }, { status: 400 });
+  // A message can be nothing but a file — "here you go" is the body of half the
+  // mail ever sent, and demanding it when something is attached is busywork.
+  if (!text && files.length === 0) {
+    return NextResponse.json({ error: 'The message body is empty.' }, { status: 400 });
+  }
 
   // A reply keeps its thread; a new message starts one. Either way the id is
   // decided before sending, because it has to go into the Reply-To.
   const threadId = body.threadId ?? randomUUID();
+
+  // Stored before sending, so a file that cannot be kept stops the message
+  // rather than leaving the recipient holding something the console cannot show.
+  let stored;
+  try {
+    stored = await storeOutboundAttachments(threadId, files);
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message + ' — nothing was sent.' }, { status: 502 });
+  }
 
   const { data, error } = await resend.emails.send({
     from,
@@ -66,6 +88,9 @@ export async function POST(req: Request) {
     subject: subject || '(no subject)',
     text,
     html: asHtml(text),
+    attachments: files.length
+      ? files.map(f => ({ filename: f.filename, content: f.bytes.toString('base64') }))
+      : undefined,
     // Replies come back to `mailbox+t<thread>@`, which the catch-all delivers
     // and the webhook decodes — this is what keeps conversations together.
     replyTo: replyToAddress(from, threadId),
@@ -75,6 +100,9 @@ export async function POST(req: Request) {
   });
 
   if (error || !data) {
+    // Nothing was sent, so the objects uploaded a moment ago have no message to
+    // belong to. Left alone they would be unreachable and permanent.
+    if (stored.length) await removeStoredAttachments(stored);
     return NextResponse.json({ error: error?.message ?? 'Resend rejected the message.' }, { status: 502 });
   }
 
@@ -88,7 +116,8 @@ export async function POST(req: Request) {
       text,
       html: null,
       resendId: data.id,
-      sentBy: session.email
+      sentBy: session.email,
+      attachments: stored
     });
   } catch (err) {
     // The mail is already gone. Report the storage failure honestly rather than
@@ -109,6 +138,60 @@ export async function POST(req: Request) {
   });
 
   return NextResponse.json({ ok: true, threadId, id: data.id });
+}
+
+type SendBody = {
+  from?: string;
+  to?: unknown;
+  cc?: unknown;
+  subject?: string;
+  text?: string;
+  threadId?: string;
+  inReplyTo?: string | null;
+};
+
+/**
+ * Both shapes, because both are the right one somewhere. A message with files
+ * has to be multipart; a reply without them is a small JSON body and turning
+ * every one of those into a form for the sake of uniformity would be worse.
+ */
+async function readRequest(req: Request): Promise<{ body: SendBody; files: OutboundFile[] }> {
+  const type = req.headers.get('content-type') ?? '';
+
+  if (!type.includes('multipart/form-data')) {
+    return { body: (await req.json()) as SendBody, files: [] };
+  }
+
+  const form = await req.formData();
+  const text = (key: string) => {
+    const v = form.get(key);
+    return typeof v === 'string' ? v : undefined;
+  };
+
+  const files: OutboundFile[] = [];
+  for (const entry of form.getAll('files')) {
+    if (typeof entry === 'string' || entry.size === 0) continue;
+    files.push({
+      filename: entry.name || 'attachment',
+      // Browsers leave this blank for extensions they do not recognise, and
+      // Resend needs something.
+      contentType: entry.type || 'application/octet-stream',
+      bytes: Buffer.from(await entry.arrayBuffer())
+    });
+  }
+
+  return {
+    body: {
+      from: text('from'),
+      to: text('to'),
+      cc: text('cc'),
+      subject: text('subject'),
+      text: text('text'),
+      threadId: text('threadId'),
+      inReplyTo: text('inReplyTo') || null
+    },
+    files
+  };
 }
 
 function normaliseList(value: unknown): string[] {

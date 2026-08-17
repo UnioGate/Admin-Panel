@@ -213,15 +213,38 @@ table { border-collapse: collapse; }
   .activity-kind { justify-self: end; }
 }
 
+/* --- Email messages ------------------------------------------------------ */
+
+/* Sent mail is inset from the left, received from the right, so the two sides
+   of a conversation form two columns you can follow without reading a word.
+   The inset is dropped below 768px, where there is no width to spare — the
+   tint and the Sent/Received label carry it on their own there. */
+.msg-in { margin-right: 48px; }
+.msg-out { margin-left: 48px; }
+
+@media (max-width: 767.98px) {
+  .msg-in, .msg-out { margin-left: 0; margin-right: 0; }
+}
+
 /* --- Drawers and modals -------------------------------------------------- */
 
 .drawer { width: 560px; max-width: 94vw; }
 .drawer-narrow { width: 460px; max-width: 92vw; }
 .modal-card { padding: 36px; }
 
+/* Sits high rather than centred: the result list grows downwards, and a panel
+   centred on its empty state jumps up the screen as you type. */
+.search-panel {
+  top: 72px; left: 50%; transform: translateX(-50%);
+  width: 680px; max-width: 92vw; max-height: min(70vh, 620px);
+}
+
 @media (max-width: 767.98px) {
   .drawer, .drawer-narrow { width: 100vw; max-width: 100vw; }
   .modal-card { padding: 24px; }
+  /* Near enough to full screen on a phone, where 70vh of results and a margin
+     all round leaves room for about three. */
+  .search-panel { top: 12px; width: 96vw; max-height: calc(100vh - 24px); }
 }
 
 /* --- Login --------------------------------------------------------------- */

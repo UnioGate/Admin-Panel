@@ -8,7 +8,34 @@ export type EmailAttachment = {
   contentType: string;
   size: number;
   inline: boolean;
+  /**
+   * Object key in the attachments bucket, for files we sent. Resend only hands
+   * back attachments on mail it *received*, so a sent file has nothing to fetch
+   * later unless we keep the bytes ourselves. Null on inbound, which is fetched
+   * from Resend by id — storing a second copy of that would buy nothing.
+   */
+  path: string | null;
 };
+
+/** Per file. Comfortably under what mail servers accept, and it is a console. */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Per message. Resend's ceiling is 40MB, but attachments are base64 on the way
+ * out, which inflates them by a third — 20MB of files is ~27MB on the wire, and
+ * leaves room for the body.
+ */
+export const MAX_TOTAL_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+// The limits and this formatter live here, with the other pure helpers, rather
+// than beside the upload code: the compose box has to state them and check
+// against them, and lib/attachments.ts holds the service-role client, which
+// throws if it is ever pulled into the browser.
+export function formatBytes(size: number): string {
+  if (size < 1024) return size + ' B';
+  if (size < 1024 * 1024) return Math.max(1, Math.round(size / 1024)) + ' KB';
+  return (size / (1024 * 1024)).toFixed(1) + ' MB';
+}
 
 export type EmailMessage = {
   id: string;
@@ -49,6 +76,13 @@ export type EmailThread = {
   weStarted: boolean;
   /** We spoke last. On a thread we started that means nobody has come back. */
   awaitingReply: boolean;
+  /** Files somewhere in the conversation. Shown in the list so a thread with an
+      attachment can be spotted without opening every one to check. Inline
+      images do not count — they are part of the body, not something to open. */
+  attachmentCount: number;
+  /** Whether the newest message came in or went out, which is what the list
+      needs to show at a glance which way the conversation last moved. */
+  lastDirection: 'inbound' | 'outbound';
 };
 
 /** The two folders a thread can appear in. `all` is the unfiltered view. */
@@ -171,7 +205,9 @@ export function groupIntoThreads(messages: EmailMessage[], ours: string[]): Emai
         hasInbound: ordered.some(m => m.direction === 'inbound'),
         hasOutbound: ordered.some(m => m.direction === 'outbound'),
         weStarted: ordered[0].direction === 'outbound',
-        awaitingReply: last.direction === 'outbound'
+        awaitingReply: last.direction === 'outbound',
+        attachmentCount: ordered.reduce((n, m) => n + m.attachments.filter(a => !a.inline).length, 0),
+        lastDirection: last.direction
       };
     })
     .sort((a, b) => b.lastActivity.localeCompare(a.lastActivity));
@@ -203,4 +239,101 @@ export function stripHtml(html: string): string {
 
 export function replySubject(subject: string): string {
   return /^\s*re\s*:/i.test(subject) ? subject : 'Re: ' + (subject || '(no subject)');
+}
+
+/** The readable body of a message, whichever part carries it. */
+export function messageBody(message: EmailMessage): string {
+  return (message.text ?? '').trim() || stripHtml(message.html ?? '');
+}
+
+export type EmailSearchField = 'subject' | 'body' | 'people' | 'attachment';
+
+export type EmailSearchHit = {
+  thread: EmailThread;
+  /** The message the term was found in, or null when only the subject matched. */
+  message: EmailMessage | null;
+  field: EmailSearchField;
+  /** A window of the matched text, for showing the term in context. */
+  snippet: string;
+  /** Offset of the match within `snippet`, so it can be highlighted. */
+  at: number;
+};
+
+/**
+ * Substring search across the conversations already on the page.
+ *
+ * Deliberately in memory rather than a query: the thread list handed to the
+ * browser has been scoped to the viewer's mailboxes, so searching it cannot
+ * reach mail they are not allowed to read. A server-side search would have to
+ * re-derive that scope, and the failure mode of getting it wrong is showing
+ * someone another mailbox's correspondence in a search result.
+ *
+ * The trade is that it only sees loaded conversations — the page's most recent
+ * few hundred — which the modal says out loud rather than implying it searched
+ * everything.
+ */
+export function searchThreads(threads: EmailThread[], query: string): EmailSearchHit[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+
+  const hits: EmailSearchHit[] = [];
+
+  for (const thread of threads) {
+    // One hit per thread, from the most informative match available. A term in
+    // five messages of one conversation is still one conversation, and listing
+    // it five times pushes the other results off the screen.
+    const hit = bestHit(thread, q);
+    if (hit) hits.push(hit);
+  }
+
+  // Most recent first, the same order as the list behind the modal.
+  return hits.sort((a, b) => b.thread.lastActivity.localeCompare(a.thread.lastActivity));
+}
+
+function bestHit(thread: EmailThread, q: string): EmailSearchHit | null {
+  const subjectAt = thread.subject.toLowerCase().indexOf(q);
+  if (subjectAt !== -1) {
+    return { thread, message: null, field: 'subject', ...window(thread.subject, subjectAt, q) };
+  }
+
+  // Newest message first: if a term appears throughout a conversation, the most
+  // recent mention is the one worth showing.
+  const newestFirst = [...thread.messages].reverse();
+
+  for (const message of newestFirst) {
+    const body = messageBody(message);
+    const at = body.toLowerCase().indexOf(q);
+    if (at !== -1) return { thread, message, field: 'body', ...window(body, at, q) };
+  }
+
+  for (const message of newestFirst) {
+    const file = message.attachments.find(a => (a.filename ?? '').toLowerCase().includes(q));
+    if (file) {
+      const name = file.filename ?? 'attachment';
+      return { thread, message, field: 'attachment', ...window(name, name.toLowerCase().indexOf(q), q) };
+    }
+  }
+
+  for (const message of newestFirst) {
+    const people = [message.fromName ?? '', message.fromAddress, ...message.to, ...message.cc]
+      .filter(Boolean)
+      .join(' ');
+    const at = people.toLowerCase().indexOf(q);
+    if (at !== -1) return { thread, message, field: 'people', ...window(people, at, q) };
+  }
+
+  return null;
+}
+
+/** A slice of `text` around the match, so a hit deep in a long body is visible. */
+function window(text: string, at: number, q: string): { snippet: string; at: number } {
+  const flat = text.replace(/\s+/g, ' ');
+  // Re-find in the flattened text: collapsing whitespace moves the offset.
+  const found = flat.toLowerCase().indexOf(q);
+  const index = found === -1 ? at : found;
+
+  const start = Math.max(0, index - 40);
+  const end = Math.min(flat.length, index + q.length + 80);
+  const snippet = (start > 0 ? '…' : '') + flat.slice(start, end) + (end < flat.length ? '…' : '');
+  return { snippet, at: index - start + (start > 0 ? 1 : 0) };
 }

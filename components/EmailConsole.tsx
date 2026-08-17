@@ -1,10 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import EmailSearch from '@/components/EmailSearch';
 import PageHeader from '@/components/PageHeader';
 import {
-  quoteForReply, replySubject, stripHtml, threadInFolder,
+  formatBytes, MAX_TOTAL_ATTACHMENT_BYTES, messageBody, quoteForReply, replySubject, threadInFolder,
   type EmailFolder, type EmailMessage, type EmailThread
 } from '@/lib/email';
 import { relative, shortDate } from '@/lib/format';
@@ -12,6 +13,14 @@ import { useAdmin } from '@/lib/store';
 import { btnPrimary, btnSecondary, c, card, display, input, pill } from '@/lib/theme';
 
 type Draft = { from: string; to: string; cc: string; subject: string; text: string };
+
+/** Everything a send needs, as a form, because a message may carry files. */
+function sendForm(fields: Record<string, string | null | undefined>, files: File[]): FormData {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) if (value) form.append(key, value);
+  for (const file of files) form.append('files', file);
+  return form;
+}
 
 export default function EmailConsole({
   threads, mailboxes, readableMailboxes, mailboxesProvisioned, provisioned, configured, canDelete
@@ -36,6 +45,9 @@ export default function EmailConsole({
   const [composing, setComposing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [reply, setReply] = useState('');
+  const [replyFiles, setReplyFiles] = useState<File[]>([]);
+  const [draftFiles, setDraftFiles] = useState<File[]>([]);
+  const [searching, setSearching] = useState(false);
   const [draft, setDraft] = useState<Draft>({ from: mailboxes[0] ?? '', to: '', cc: '', subject: '', text: '' });
 
   // The mailbox filter and the folder filter are independent: "support@, sent"
@@ -70,10 +82,13 @@ export default function EmailConsole({
 
   async function post(url: string, method: string, body: unknown): Promise<boolean> {
     setBusy(true);
+    // A form sets its own content-type, boundary and all. Setting it by hand
+    // here would produce a body the server cannot split apart.
+    const form = body instanceof FormData;
     const res = await fetch(url, {
       method,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body)
+      headers: form ? undefined : { 'content-type': 'application/json' },
+      body: form ? body : JSON.stringify(body)
     });
     setBusy(false);
     if (!res.ok) {
@@ -103,36 +118,69 @@ export default function EmailConsole({
   async function sendReply() {
     if (!open || !replyFrom) return;
     const last = open.messages[open.messages.length - 1];
-    const ok = await post('/api/email/send', 'POST', {
+    const ok = await post('/api/email/send', 'POST', sendForm({
       from: replyFrom,
-      to: open.correspondents,
+      to: open.correspondents.join(','),
       subject: replySubject(open.subject),
       text: reply,
       threadId: open.id,
       inReplyTo: last.direction === 'inbound' ? last.id : null
-    });
+    }, replyFiles));
     if (ok) {
       setReply('');
+      setReplyFiles([]);
       flash('Reply sent.');
       router.refresh();
     }
   }
 
   async function sendNew() {
-    const ok = await post('/api/email/send', 'POST', {
+    const ok = await post('/api/email/send', 'POST', sendForm({
       from: draft.from,
       to: draft.to,
       cc: draft.cc,
       subject: draft.subject,
       text: draft.text
-    });
+    }, draftFiles));
     if (ok) {
       setComposing(false);
       setDraft({ from: mailboxes[0] ?? '', to: '', cc: '', subject: '', text: '' });
+      setDraftFiles([]);
       flash('Message sent.');
       router.refresh();
     }
   }
+
+  /**
+   * Opens a conversation from a search result. The filters have to come off
+   * first: a hit in a mailbox you have filtered out, or in Sent while you are
+   * looking at Inbox, would otherwise select a thread the list cannot show and
+   * appear to do nothing.
+   */
+  function openThread(threadId: string) {
+    const found = threads.find(t => t.id === threadId);
+    setSearching(false);
+    setMailbox('All');
+    setFolder('all');
+    setConfirmDelete(false);
+    setReply('');
+    setReplyFiles([]);
+    setOpenId(threadId);
+    if (found?.unread) void setRead(threadId, true);
+  }
+
+  // Cmd-K on a Mac, Ctrl-K everywhere else — what every console with a search
+  // box binds it to.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearching(s => !s);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   if (!configured || !provisioned || !mailboxesProvisioned) {
     return (
@@ -208,10 +256,21 @@ export default function EmailConsole({
 
         <button
           type="button"
+          onClick={() => setSearching(true)}
+          style={{ ...btnSecondary, marginLeft: 'auto', padding: '11px 18px', fontSize: 15, display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}
+        >
+          <span aria-hidden>⌕</span> Search
+          <kbd style={{ fontSize: 11, fontWeight: 400, color: c.soft, background: c.bg, borderRadius: 5, padding: '2px 6px', fontFamily: 'inherit' }}>
+            ⌘K
+          </kbd>
+        </button>
+
+        <button
+          type="button"
           disabled={!canSend}
           onClick={() => setComposing(true)}
           title={canSend ? undefined : 'You have no mailbox that can send. An Owner assigns one in Settings.'}
-          style={{ ...btnPrimary, marginLeft: 'auto', padding: '11px 22px', fontSize: 15, opacity: canSend ? 1 : 0.5 }}
+          style={{ ...btnPrimary, padding: '11px 22px', fontSize: 15, opacity: canSend ? 1 : 0.5 }}
         >
           New message
         </button>
@@ -253,7 +312,20 @@ export default function EmailConsole({
                 style={{ display: 'block', width: '100%', textAlign: 'left', background: on ? '#F4F6FA' : c.white, border: 0, borderTop: '0.5px solid ' + c.line, borderLeft: '3px solid ' + (on ? c.blue : t.unread ? c.bar : 'transparent'), padding: '16px 20px', cursor: 'pointer' }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
-                  <span style={{ fontSize: 15, fontWeight: t.unread ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: 15, fontWeight: t.unread ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                    {/* Which way the conversation last moved, before the name.
+                        A list of addresses reads the same whether they wrote to
+                        you or you wrote to them, and the folder tabs do not help
+                        in All. */}
+                    <span
+                      aria-hidden
+                      style={{ color: t.lastDirection === 'inbound' ? c.blue : c.soft, marginRight: 7, fontWeight: 600 }}
+                    >
+                      {t.lastDirection === 'inbound' ? '↓' : '↑'}
+                    </span>
+                    <span style={{ color: c.soft, fontWeight: 400 }}>
+                      {t.lastDirection === 'inbound' ? 'From ' : 'To '}
+                    </span>
                     {t.correspondents[0] ?? 'Unknown sender'}
                   </span>
                   <span style={{ fontSize: 12, color: c.soft, whiteSpace: 'nowrap' }}>{relative(t.lastActivity)}</span>
@@ -264,6 +336,17 @@ export default function EmailConsole({
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
                   {t.mailbox ? (
                     <span style={{ fontSize: 11, background: c.bg, color: c.muted, padding: '3px 9px', borderRadius: 20 }}>{t.mailbox}</span>
+                  ) : null}
+
+                  {/* Otherwise the only way to find out a conversation has a
+                      file is to open it. */}
+                  {t.attachmentCount > 0 ? (
+                    <span
+                      title={t.attachmentCount + ' attachment' + (t.attachmentCount === 1 ? '' : 's')}
+                      style={{ fontSize: 11, color: c.muted }}
+                    >
+                      📎 {t.attachmentCount}
+                    </span>
                   ) : null}
 
                   {/* The state of a conversation we started: still waiting, or
@@ -322,7 +405,7 @@ export default function EmailConsole({
               </div>
             </div>
 
-            <div style={{ padding: '8px 28px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 14, background: c.bg }}>
               {open.messages.map(m => <MessageBlock key={m.id} message={m} />)}
             </div>
 
@@ -343,12 +426,17 @@ export default function EmailConsole({
                 placeholder={replyFrom ? 'Write a reply…' : 'Replies are disabled for this mailbox.'}
                 style={{ ...input, width: '100%', resize: 'vertical', fontFamily: 'inherit', opacity: replyFrom ? 1 : 0.6 }}
               />
-              <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center' }}>
+
+              <div style={{ marginTop: 10 }}>
+                <FilePicker id="reply-files" files={replyFiles} onChange={setReplyFiles} disabled={!replyFrom} />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button
                   type="button"
-                  disabled={busy || !replyFrom || !reply.trim() || open.correspondents.length === 0}
+                  disabled={busy || !replyFrom || (!reply.trim() && replyFiles.length === 0) || open.correspondents.length === 0}
                   onClick={() => void sendReply()}
-                  style={{ ...btnPrimary, padding: '11px 24px', fontSize: 15, opacity: busy || !replyFrom || !reply.trim() ? 0.5 : 1 }}
+                  style={{ ...btnPrimary, padding: '11px 24px', fontSize: 15, opacity: busy || !replyFrom || (!reply.trim() && replyFiles.length === 0) ? 0.5 : 1 }}
                 >
                   {busy ? 'Sending…' : 'Send reply'}
                 </button>
@@ -400,35 +488,70 @@ export default function EmailConsole({
               style={{ ...input, width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
             />
 
+            <label style={{ fontSize: 13, color: c.soft }}>Attachments</label>
+            <FilePicker id="draft-files" files={draftFiles} onChange={setDraftFiles} />
+
             <button
               type="button"
-              disabled={busy || !draft.to.trim() || !draft.text.trim()}
+              disabled={busy || !draft.to.trim() || (!draft.text.trim() && draftFiles.length === 0)}
               onClick={() => void sendNew()}
-              style={{ ...btnPrimary, marginTop: 6, opacity: busy || !draft.to.trim() || !draft.text.trim() ? 0.5 : 1 }}
+              style={{ ...btnPrimary, marginTop: 6, opacity: busy || !draft.to.trim() || (!draft.text.trim() && draftFiles.length === 0) ? 0.5 : 1 }}
             >
               {busy ? 'Sending…' : 'Send'}
             </button>
           </aside>
         </>
       ) : null}
+
+      {searching ? (
+        <EmailSearch threads={threads} onOpen={openThread} onClose={() => setSearching(false)} />
+      ) : null}
     </>
   );
 }
 
+/**
+ * One message in a conversation.
+ *
+ * Sent and received are told apart three ways at once — tint, which side the
+ * block is indented from, and a word — because any one of them alone fails
+ * somewhere. Colour alone fails if you cannot distinguish these two; indentation
+ * alone collapses on a narrow screen, where there is no room to indent.
+ */
 function MessageBlock({ message }: { message: EmailMessage }) {
   const outbound = message.direction === 'outbound';
   // Deliberately not rendering the sender's HTML. Inbound mail is untrusted
   // markup from strangers, and injecting it here would run it on the same
   // origin as the admin session. The text part reads fine.
-  const body = (message.text ?? '').trim() || stripHtml(message.html ?? '') || '(empty message)';
+  const body = messageBody(message) || '(empty message)';
+  const files = message.attachments.filter(a => !a.inline);
 
   return (
-    <div style={{ padding: '20px 0', borderBottom: '0.5px solid ' + c.line }}>
+    <div
+      className={outbound ? 'msg msg-out' : 'msg msg-in'}
+      style={{
+        borderRadius: 12,
+        padding: '16px 18px',
+        background: outbound ? c.blueTint : c.white,
+        border: '0.5px solid ' + (outbound ? '#C3CFEC' : c.line),
+        borderLeft: '3px solid ' + (outbound ? c.blue : c.bar)
+      }}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 14, fontWeight: 500, color: outbound ? c.blue : c.ink, overflowWrap: 'anywhere' }}>
+          <span
+            style={{
+              fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 600,
+              background: outbound ? c.blue : c.bar, color: outbound ? c.white : c.ink,
+              padding: '3px 8px', borderRadius: 20, marginRight: 9, whiteSpace: 'nowrap'
+            }}
+          >
+            {outbound ? 'Sent' : 'Received'}
+          </span>
           {outbound ? 'You' : message.fromName ?? message.fromAddress}
           <span style={{ fontWeight: 300, color: c.soft }}>
-            {outbound ? ' · ' + message.fromAddress + (message.sentBy ? ' (' + message.sentBy + ')' : '') : ' · ' + message.fromAddress}
+            {' · ' + message.fromAddress}
+            {outbound && message.sentBy ? ' (' + message.sentBy + ')' : ''}
           </span>
         </span>
         <span style={{ fontSize: 12, color: c.soft, whiteSpace: 'nowrap' }}>{shortDate(message.createdAt)}</span>
@@ -438,19 +561,103 @@ function MessageBlock({ message }: { message: EmailMessage }) {
         {body}
       </p>
 
-      {message.attachments.length > 0 ? (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-          {message.attachments.map(a => (
+      {files.length > 0 ? (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+          {files.map(a => (
             <a
               key={a.id}
               href={'/api/email/attachment?email=' + encodeURIComponent(message.resendId ?? '') + '&id=' + encodeURIComponent(a.id)}
-              style={{ fontSize: 13, color: c.blue, background: c.bg, padding: '7px 13px', borderRadius: 8, textDecoration: 'none' }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: c.blue,
+                background: c.white, border: '0.7px solid ' + c.faintBorder, padding: '8px 13px',
+                borderRadius: 8, textDecoration: 'none', maxWidth: '100%'
+              }}
             >
-              {a.filename ?? 'attachment'} · {Math.max(1, Math.round(a.size / 1024))} KB
+              <span aria-hidden>📎</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {a.filename ?? 'attachment'}
+              </span>
+              <span style={{ color: c.soft, whiteSpace: 'nowrap' }}>{formatBytes(a.size)}</span>
             </a>
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** Chosen-but-not-yet-sent files, with a way to change your mind about each. */
+function FilePicker({
+  files, onChange, disabled, id
+}: {
+  files: File[];
+  onChange: (files: File[]) => void;
+  disabled?: boolean;
+  id: string;
+}) {
+  const picker = useRef<HTMLInputElement>(null);
+  const total = files.reduce((n, f) => n + f.size, 0);
+  const overSize = total > MAX_TOTAL_ATTACHMENT_BYTES;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <input
+        id={id}
+        ref={picker}
+        type="file"
+        multiple
+        disabled={disabled}
+        onChange={e => {
+          // Appended, not replaced: picking a second time is almost always
+          // "and this one too", and the native dialog cannot add to a selection.
+          onChange([...files, ...Array.from(e.target.files ?? [])]);
+          // Cleared so re-picking the same file fires change again.
+          if (picker.current) picker.current.value = '';
+        }}
+        style={{ display: 'none' }}
+      />
+
+      {files.length > 0 ? (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {files.map((f, i) => (
+            <span
+              key={f.name + i}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, background: c.bg,
+                padding: '7px 8px 7px 12px', borderRadius: 8, maxWidth: '100%'
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+              <span style={{ color: c.soft }}>{formatBytes(f.size)}</span>
+              <button
+                type="button"
+                onClick={() => onChange(files.filter((_, j) => j !== i))}
+                aria-label={'Remove ' + f.name}
+                style={{ background: 'transparent', border: 0, cursor: 'pointer', fontSize: 15, color: c.soft, lineHeight: 1, padding: '0 2px' }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => picker.current?.click()}
+          style={{ ...btnSecondary, padding: '9px 16px', fontSize: 14, opacity: disabled ? 0.5 : 1 }}
+        >
+          📎 Attach files
+        </button>
+        {files.length > 0 ? (
+          <span style={{ fontSize: 12, color: overSize ? '#B3261E' : c.soft }}>
+            {files.length} file{files.length === 1 ? '' : 's'} · {formatBytes(total)}
+            {overSize ? ' — over the ' + formatBytes(MAX_TOTAL_ATTACHMENT_BYTES) + ' limit' : ''}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }

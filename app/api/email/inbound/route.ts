@@ -62,7 +62,10 @@ export async function POST(req: Request) {
     filename: a.filename,
     contentType: a.content_type,
     size: a.size,
-    inline: a.content_disposition === 'inline'
+    inline: a.content_disposition === 'inline',
+    // Resend keeps inbound bytes and serves them by id, so there is nothing of
+    // ours to point at. Only mail we send needs a stored copy.
+    path: null
   }));
 
   let stored: { threadId: string; mailbox: string | null };
